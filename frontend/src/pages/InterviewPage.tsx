@@ -21,7 +21,7 @@ export default function InterviewPage({ userId }: { userId: number }) {
     setError(null);
 
     try {
-      const apiUrl = 'http://localhost:5000';
+      const apiUrl = import.meta.env.VITE_API_URL;
       
       if (!apiUrl) {
         throw new Error('API URLが設定されていません。.env.localを確認してください。');
@@ -127,7 +127,7 @@ export default function InterviewPage({ userId }: { userId: number }) {
     setError(null);
 
     try {
-      const apiUrl = 'http://localhost:5000';
+      const apiUrl = import.meta.env.VITE_API_URL;
       
       if (!apiUrl) {
         throw new Error('API URLが設定されていません');
@@ -177,7 +177,7 @@ export default function InterviewPage({ userId }: { userId: number }) {
 
   const saveConversation = async (finalConversation: Message[]) => {
     try {
-      const apiUrl = 'http://localhost:5000';
+      const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) return;
 
       await fetch(`${apiUrl}/api/interview/save`, {

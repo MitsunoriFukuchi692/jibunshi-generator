@@ -294,7 +294,8 @@ export default function UserPage({ userId, setUserId }: { userId: number | null;
       <div style={styles.section}>
         <label style={styles.label}>生年月日 *</label>
         <input
-          type="date"
+          type="text"
+          placeholder="YYYY-MM-DD（例：1952-05-10）"
           value={birthDate}
           onChange={(e) => setBirthDate(e.target.value)}
           style={styles.input}
@@ -425,24 +426,24 @@ export default function UserPage({ userId, setUserId }: { userId: number | null;
       </div>
 
       <div style={styles.buttonContainer}>
-        <button 
-          onClick={() => { if (userId) setStep(5); }} 
+        <button
+          onClick={() => { if (userId) setStep(5); }}
           style={{ ...styles.button, backgroundColor: '#27ae60', color: 'white' }}
         >
           写真をアップロード →
         </button>
-        <button 
-          onClick={() => { 
-            setStep(1); 
-            setUserName(''); 
-            setUserAge(''); 
-            setBirthDate(''); 
-            setGender(''); 
-            setAddress(''); 
-            setOccupation(''); 
-            setBio(''); 
-            setUserId(null); 
-          }} 
+        <button
+          onClick={() => {
+            setStep(1);
+            setUserName('');
+            setUserAge('');
+            setBirthDate('');
+            setGender('');
+            setAddress('');
+            setOccupation('');
+            setBio('');
+            setUserId(null);
+          }}
           style={{ ...styles.button, backgroundColor: '#95a5a6', color: 'white' }}
         >
           新規登録に戻る
@@ -470,8 +471,8 @@ export default function UserPage({ userId, setUserId }: { userId: number | null;
           写真の分析が完了しました。次は人生のターニングポイントについてお聞きします。
         </p>
         <div style={styles.buttonContainer}>
-          <button 
-            onClick={() => setStep(7)} 
+          <button
+            onClick={() => setStep(7)}
             style={{ ...styles.button, backgroundColor: '#27ae60', color: 'white' }}
           >
             ターニングポイント入力へ →
@@ -509,14 +510,14 @@ export default function UserPage({ userId, setUserId }: { userId: number | null;
       </div>
 
       <div style={styles.buttonContainer}>
-        <button 
-          onClick={() => setStep(9)} 
+        <button
+          onClick={() => setStep(9)}
           style={{ ...styles.button, backgroundColor: '#27ae60', color: 'white' }}
         >
           AI インタビューに進む →
         </button>
-        <button 
-          onClick={() => setStep(1)} 
+        <button
+          onClick={() => setStep(1)}
           style={{ ...styles.button, backgroundColor: '#95a5a6', color: 'white' }}
         >
           新規登録に戻る
