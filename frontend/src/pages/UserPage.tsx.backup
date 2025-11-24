@@ -1,11 +1,8 @@
 import { useState } from 'react';
-import PhotoUploadPage from './PhotoUploadPage'
-import TurningPointPage from './TurningPointPage'
-import InterviewPage from './InterviewPage'
 
-export default function UserPage({ userId, setUserId }: { userId: number | null; setUserId: (id: number | null) => void }) {
+export default function UserPage() {
   // ステップ管理
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // ステップ1: 基本情報
   const [userName, setUserName] = useState('');
@@ -216,26 +213,22 @@ export default function UserPage({ userId, setUserId }: { userId: number | null;
 
   const handleBack = () => {
     if (step > 1) {
-      setStep((step - 1) as 1 | 2 | 3 | 4 | 5);
+      setStep((step - 1) as 1 | 2 | 3 | 4);
     }
   };
 
-  const handleRegister = async () => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: userName, age: userAge, birth_date: birthDate, gender, address, occupation, bio }),
-      });
-      if (!response.ok) throw new Error('登録に失敗しました');
-      const data = await response.json();
-      alert(`${userName}さんが登録されました！ ID: ${data.id}`);
-      setUserId(data.id);
-      setStep(4);
-    } catch (error) {
-      console.error('登録エラー:', error);
-      alert('登録に失敗しました');
-    }
+  const handleRegister = () => {
+    console.log('ユーザー登録:', {
+      name: userName,
+      age: userAge,
+      birthDate,
+      gender,
+      address,
+      occupation,
+      bio,
+    });
+    alert(`${userName}さんが登録されました！`);
+    setStep(4);
   };
 
   // ステップインジケーター
@@ -424,111 +417,26 @@ export default function UserPage({ userId, setUserId }: { userId: number | null;
         </ul>
       </div>
 
-      <div style={styles.buttonContainer}>
-        <button 
-          onClick={() => { if (userId) setStep(5); }} 
-          style={{ ...styles.button, backgroundColor: '#27ae60', color: 'white' }}
-        >
-          写真をアップロード →
-        </button>
-        <button 
-          onClick={() => { 
-            setStep(1); 
-            setUserName(''); 
-            setUserAge(''); 
-            setBirthDate(''); 
-            setGender(''); 
-            setAddress(''); 
-            setOccupation(''); 
-            setBio(''); 
-            setUserId(null); 
-          }} 
-          style={{ ...styles.button, backgroundColor: '#95a5a6', color: 'white' }}
-        >
-          新規登録に戻る
-        </button>
-      </div>
-    </>
-  );
-
-  // ステップ5: 写真アップロード
-  const renderStep5 = () => (
-    <>
-      {userId && <PhotoUploadPage userId={userId} onComplete={() => setStep(6)} />}
-    </>
-  );
-
-  // ステップ6: 次のステップ（ターニングポイント入力へ）
-  const renderStep6 = () => (
-    <>
-      <div style={styles.info}>
-        ✓ 写真のアップロードが完了しました！
-      </div>
-      <div style={styles.card}>
-        <h3 style={{ color: '#2c3e50' }}>次のステップ</h3>
-        <p style={{ color: '#34495e', lineHeight: '1.8' }}>
-          写真の分析が完了しました。次は人生のターニングポイントについてお聞きします。
-        </p>
-        <div style={styles.buttonContainer}>
-          <button 
-            onClick={() => setStep(7)} 
-            style={{ ...styles.button, backgroundColor: '#27ae60', color: 'white' }}
-          >
-            ターニングポイント入力へ →
-          </button>
-        </div>
-      </div>
-    </>
-  );
-
-  // ステップ7: ターニングポイント入力
-  const renderStep7 = () => (
-    <>
-      {userId && <TurningPointPage userId={userId} birthDate={birthDate} onComplete={() => setStep(8)} />}
-    </>
-  );
-
-  // ステップ8: ターニングポイント保存完了
-  const renderStep8 = () => (
-    <>
-      <div style={styles.completionMessage}>
-        <div style={styles.completionIcon}>🎉</div>
-        <div style={styles.completionText}>ターニングポイントの入力が完了しました！</div>
-        <div style={{ fontSize: '16px', color: '#27ae60' }}>
-          次は AI インタビュー機能を使用します
-        </div>
-      </div>
-
-      <div style={styles.card}>
-        <h3 style={{ marginTop: 0, color: '#2c3e50' }}>次のステップ</h3>
-        <ul style={{ lineHeight: '1.8', color: '#34495e' }}>
-          <li>🤖 AI があなたの自分史を自動作成</li>
-          <li>📖 完成した自分史を確認</li>
-          <li>📕 PDF で出版</li>
-        </ul>
-      </div>
-
-      <div style={styles.buttonContainer}>
-        <button 
-          onClick={() => setStep(9)} 
-          style={{ ...styles.button, backgroundColor: '#27ae60', color: 'white' }}
-        >
-          AI インタビューに進む →
-        </button>
-        <button 
-          onClick={() => setStep(1)} 
-          style={{ ...styles.button, backgroundColor: '#95a5a6', color: 'white' }}
-        >
-          新規登録に戻る
-        </button>
-      </div>
-    </>
-  );
-
-  // ステップ9: AI インタビュー
-  const renderStep9 = () => (
-    <>
-      {userId && <InterviewPage userId={userId} />}
+      <button
+        onClick={() => {
+          setStep(1);
+          setUserName('');
+          setUserAge('');
+          setBirthDate('');
+          setGender('');
+          setAddress('');
+          setOccupation('');
+          setBio('');
+        }}
+        style={{
+          ...styles.button,
+          backgroundColor: '#3498db',
+          color: 'white',
+          width: '100%',
+        }}
+      >
+        新規登録に戻る
+      </button>
     </>
   );
 
@@ -545,11 +453,6 @@ export default function UserPage({ userId, setUserId }: { userId: number | null;
         {step === 2 && renderStep2()}
         {step === 3 && renderStep3()}
         {step === 4 && renderStep4()}
-        {step === 5 && renderStep5()}
-        {step === 6 && renderStep6()}
-        {step === 7 && renderStep7()}
-        {step === 8 && renderStep8()}
-        {step === 9 && renderStep9()}
 
         {step < 4 && (
           <div style={styles.buttonContainer}>
