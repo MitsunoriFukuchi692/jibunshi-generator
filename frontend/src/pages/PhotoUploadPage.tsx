@@ -8,7 +8,7 @@ interface UploadedPhoto {
   description: string;
 }
 
-export default function PhotoUploadPage({ userId, onComplete }: { userId: number; onComplete: () => void }) {
+export default function PhotoUploadPage({ userId, token, onComplete }: { userId: number; token: string | null; onComplete: () => void }) {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -47,6 +47,9 @@ export default function PhotoUploadPage({ userId, onComplete }: { userId: number
 
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/photos`, {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
           body: formData,
         });
 

@@ -8,7 +8,7 @@ interface TurningPoint {
   event_description: string;
 }
 
-export default function TurningPointPage({ userId, birthDate, onComplete }: { userId: number; birthDate: string; onComplete: () => void }) {
+export default function TurningPointPage({ userId, token, birthDate, onComplete }: { userId: number; token: string | null; birthDate: string; onComplete: () => void }) {
   const [turningPoints, setTurningPoints] = useState<TurningPoint[]>([
     { age: '', year: '', event_title: '', event_description: '' },
   ]);
@@ -97,6 +97,7 @@ export default function TurningPointPage({ userId, birthDate, onComplete }: { us
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
             user_id: userId,

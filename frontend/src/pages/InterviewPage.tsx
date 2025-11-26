@@ -5,7 +5,7 @@ interface Message {
   content: string;
 }
 
-export default function InterviewPage({ userId }: { userId: number }) {
+export default function InterviewPage({ userId, token }: { userId: number; token: string | null }) {
   const [conversation, setConversation] = useState<Message[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [currentAnswer, setCurrentAnswer] = useState<string>(''); // 現在の回答を保存
@@ -22,7 +22,7 @@ export default function InterviewPage({ userId }: { userId: number }) {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      
+
       if (!apiUrl) {
         throw new Error('API URLが設定されていません。.env.localを確認してください。');
       }
@@ -32,7 +32,10 @@ export default function InterviewPage({ userId }: { userId: number }) {
 
       const response = await fetch(`${apiUrl}/api/interview/question`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           user_id: userId,
           conversation_history: [],
@@ -92,10 +95,10 @@ export default function InterviewPage({ userId }: { userId: number }) {
 
       console.log('📝 Transcript:', transcript);
       setListening(false);
-      
+
       // 現在の回答に追加（複数回の音声入力を累積）
-      const updatedAnswer = currentAnswer 
-        ? currentAnswer + '。' + transcript 
+      const updatedAnswer = currentAnswer
+        ? currentAnswer + '。' + transcript
         : transcript;
       setCurrentAnswer(updatedAnswer);
     };
@@ -128,7 +131,7 @@ export default function InterviewPage({ userId }: { userId: number }) {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      
+
       if (!apiUrl) {
         throw new Error('API URLが設定されていません');
       }
@@ -137,7 +140,10 @@ export default function InterviewPage({ userId }: { userId: number }) {
 
       const response = await fetch(`${apiUrl}/api/interview/question`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           user_id: userId,
           conversation_history: newConversation,
@@ -182,12 +188,16 @@ export default function InterviewPage({ userId }: { userId: number }) {
 
       await fetch(`${apiUrl}/api/interview/save`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           user_id: userId,
           conversation: finalConversation,
         }),
       });
+
     } catch (error) {
       console.error('❌ 保存エラー:', error);
     }
