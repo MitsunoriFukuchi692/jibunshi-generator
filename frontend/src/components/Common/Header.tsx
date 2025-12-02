@@ -1,6 +1,6 @@
 interface HeaderProps {
-  currentPage: 'user' | 'publisher'
-  onPageChange: (page: 'user' | 'publisher') => void
+  currentPage: 'user' | 'interview' | 'publisher' | 'corrected'
+  onPageChange: (page: 'user' | 'interview' | 'publisher' | 'corrected') => void
 }
 
 export default function Header({ currentPage, onPageChange }: HeaderProps) {
@@ -17,6 +17,24 @@ export default function Header({ currentPage, onPageChange }: HeaderProps) {
             onClick={() => onPageChange('user')}
           >
             ユーザー
+          </button>
+          <button
+            style={{
+              ...styles.navButton,
+              ...(currentPage === 'interview' ? styles.navButtonActive : {}),
+            }}
+            onClick={() => onPageChange('interview')}
+          >
+            インタビュー
+          </button>
+          <button
+            style={{
+              ...styles.navButton,
+              ...(currentPage === 'corrected' ? styles.navButtonActive : {}),
+            }}
+            onClick={() => onPageChange('corrected')}
+          >
+            修正済みテキスト
           </button>
           <button
             style={{

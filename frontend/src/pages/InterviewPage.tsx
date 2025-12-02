@@ -1,63 +1,127 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import TextCorrectionPage from './TextCorrectionPage';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+interface InterviewSession {
+  conversation: Message[];
+  currentQuestionIndex: number;
+  timestamp: number;
+}
+
+// 新しい質問リスト（21個）
+const INTERVIEW_QUESTIONS = [
+  // 第1部：基本情報（生い立ち）
+  "どこで、いつ生まれましたか？どんな環境で育ちましたか？",
+  
+  // 第2部：学生時代
+  "小中高大の学校名を教えてください。",
+  "学生時代で最も印象に残っていることは何ですか？",
+  "進路選択の時、どのように決めましたか？",
+  
+  // 第3部：仕事・キャリア
+  "初めての仕事について教えてください。",
+  "仕事人生で最も大切な経験は何ですか？",
+  "仕事でのやりがいや成功体験を聞かせてください。",
+  "仕事での失敗や挫折経験、そこから学んだことは？",
+  
+  // 第4部：家族・人間関係
+  "家族や友人との関係について聞かせてください。",
+  "趣味や好きなこと、人生で最も幸せを感じた時期は何ですか？",
+  
+  // 第5部：健康・人生の転機
+  "健康や病気について、人生に大きな影響を与えた出来事はありますか？",
+  
+  // 第6部：人生の教訓
+  "これまでの人生で学んだ大切な教訓は何ですか？",
+  "今、大事にしていることは何ですか？",
+  
+  // 第7部：メッセージ（複数対象）
+  "次の世代（子ども・孫など）に伝えたいメッセージは何ですか？",
+  "家族に伝えたいメッセージはありますか？",
+  "友人に伝えたいメッセージはありますか？",
+  "職場や会社に対して伝えたいメッセージはありますか？",
+  
+  // 第8部：総括
+  "人生を振り返ってどう感じていますか？",
+  "これからの時間の中で、挑戦したいことはありますか？",
+];
+
 export default function InterviewPage({ userId, token }: { userId: number; token: string | null }) {
   const [conversation, setConversation] = useState<Message[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<string>('');
-  const [currentAnswer, setCurrentAnswer] = useState<string>(''); // 現在の回答を保存
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [currentAnswer, setCurrentAnswer] = useState<string>('');
   const [listening, setListening] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
-  const [isAnswering, setIsAnswering] = useState(false); // 回答中の状態
+  const [showQuestionsList, setShowQuestionsList] = useState(false);
+  const [isAnswering, setIsAnswering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCorrectionPage, setShowCorrectionPage] = useState(false);
+  const [finalConversation, setFinalConversation] = useState<Message[]>([]);
+  const [unsavedChanges, setUnsavedChanges] = useState(false);
+
+  // LocalStorage からセッションを復元
+  useEffect(() => {
+    const saved = localStorage.getItem(`interview_session_${userId}`);
+    if (saved) {
+      try {
+        const session: InterviewSession = JSON.parse(saved);
+        // セッションが24時間以内であれば復元
+        if (Date.now() - session.timestamp < 24 * 60 * 60 * 1000) {
+          setConversation(session.conversation);
+          setCurrentQuestionIndex(session.currentQuestionIndex);
+          setIsStarted(true);
+          setIsAnswering(true);
+        } else {
+          localStorage.removeItem(`interview_session_${userId}`);
+        }
+      } catch (e) {
+        console.error('セッション復元エラー:', e);
+      }
+    }
+  }, [userId]);
+
+  // 自動保存（30秒ごと）
+  useEffect(() => {
+    if (!isStarted || conversation.length === 0) return;
+
+    const interval = setInterval(() => {
+      saveSessionToLocalStorage();
+    }, 30000); // 30秒ごと
+
+    return () => clearInterval(interval);
+  }, [conversation, currentQuestionIndex, userId]);
+
+  const saveSessionToLocalStorage = () => {
+    const session: InterviewSession = {
+      conversation,
+      currentQuestionIndex,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem(`interview_session_${userId}`, JSON.stringify(session));
+    console.log('✅ セッション保存完了');
+  };
+
+  const getCurrentQuestion = (): string => {
+    return INTERVIEW_QUESTIONS[currentQuestionIndex] || '';
+  };
 
   const startInterview = async () => {
     setIsStarted(true);
+    setShowQuestionsList(false);
     setProcessing(true);
     setError(null);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-
-      if (!apiUrl) {
-        throw new Error('API URLが設定されていません。.env.localを確認してください。');
-      }
-
-      console.log('🔌 API URL:', apiUrl);
-      console.log('📤 Sending interview start request...');
-
-      const response = await fetch(`${apiUrl}/api/interview/question`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          conversation_history: [],
-        }),
-      });
-
-      console.log('📥 Response status:', response.status);
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('❌ API Error:', errorData);
-        throw new Error(`質問の生成に失敗しました (${response.status})`);
-      }
-
-      const data = await response.json();
-      console.log('✅ Received question:', data);
-
-      setCurrentQuestion(data.question);
-      setConversation([{ role: 'assistant', content: data.question }]);
-      setIsAnswering(true); // 回答入力開始
+      const question = getCurrentQuestion();
+      setConversation([{ role: 'assistant', content: question }]);
+      setIsAnswering(true);
       setCurrentAnswer('');
-      setError(null);
+      saveSessionToLocalStorage();
     } catch (error) {
       console.error('❌ Interview error:', error);
       const errorMessage = error instanceof Error ? error.message : 'インタビューの開始に失敗しました';
@@ -96,11 +160,11 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       console.log('📝 Transcript:', transcript);
       setListening(false);
 
-      // 現在の回答に追加（複数回の音声入力を累積）
       const updatedAnswer = currentAnswer
         ? currentAnswer + '。' + transcript
         : transcript;
       setCurrentAnswer(updatedAnswer);
+      setUnsavedChanges(true);
     };
 
     recognition.onerror = (event: any) => {
@@ -123,51 +187,29 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       { role: 'user', content: currentAnswer },
     ];
     setConversation(newConversation);
-    setCurrentAnswer(''); // 回答をリセット
+    setCurrentAnswer('');
     setIsAnswering(false);
-
     setProcessing(true);
     setError(null);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
+      // 次の質問を取得
+      const nextIndex = currentQuestionIndex + 1;
 
-      if (!apiUrl) {
-        throw new Error('API URLが設定されていません');
-      }
-
-      console.log('📤 Sending next question request...');
-
-      const response = await fetch(`${apiUrl}/api/interview/question`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          conversation_history: newConversation,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('❌ API Error:', errorData);
-        throw new Error(`質問の生成に失敗しました (${response.status})`);
-      }
-
-      const data = await response.json();
-      console.log('✅ Received next question:', data);
-
-      if (data.completed) {
-        setCurrentQuestion('');
+      if (nextIndex >= INTERVIEW_QUESTIONS.length) {
+        // インタビュー完了
         await saveConversation(newConversation);
-        alert('インタビューが完了しました！');
+        setFinalConversation(newConversation);
+        setShowCorrectionPage(true);
+        localStorage.removeItem(`interview_session_${userId}`);
       } else {
-        setCurrentQuestion(data.question);
-        setConversation([...newConversation, { role: 'assistant', content: data.question }]);
-        setIsAnswering(true); // 次の質問への回答入力開始
-        setCurrentAnswer('');
+        // 次の質問を表示
+        const nextQuestion = INTERVIEW_QUESTIONS[nextIndex];
+        setCurrentQuestionIndex(nextIndex);
+        setConversation([...newConversation, { role: 'assistant', content: nextQuestion }]);
+        setIsAnswering(true);
+        setUnsavedChanges(false);
+        saveSessionToLocalStorage();
       }
       setError(null);
     } catch (error) {
@@ -175,16 +217,25 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       const errorMessage = error instanceof Error ? error.message : '質問の生成に失敗しました';
       setError(errorMessage);
       alert(`エラー: ${errorMessage}`);
-      setIsAnswering(true); // エラーの場合は再度入力可能にする
+      setIsAnswering(true);
     } finally {
       setProcessing(false);
     }
+  };
+
+  const saveAndPause = async () => {
+    saveSessionToLocalStorage();
+    alert('進捗を保存しました。後で続きから再開できます。');
   };
 
   const saveConversation = async (finalConversation: Message[]) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) return;
+
+      const responses = finalConversation
+        .filter((msg, idx) => idx % 2 === 1) // ユーザーの回答のみ
+        .map((msg) => msg.content);
 
       await fetch(`${apiUrl}/api/interview/save`, {
         method: 'POST',
@@ -195,6 +246,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
         body: JSON.stringify({
           user_id: userId,
           conversation: finalConversation,
+          responses,
         }),
       });
 
@@ -228,6 +280,24 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       color: '#2c3e50',
       marginBottom: '20px',
       lineHeight: '1.6',
+    },
+    progressBar: {
+      backgroundColor: '#ecf0f1',
+      borderRadius: '4px',
+      height: '20px',
+      marginBottom: '20px',
+      overflow: 'hidden',
+    },
+    progressFill: {
+      backgroundColor: '#3498db',
+      height: '100%',
+      transition: 'width 0.3s ease',
+    },
+    progressText: {
+      fontSize: '12px',
+      color: '#2c3e50',
+      marginBottom: '10px',
+      textAlign: 'center' as const,
     },
     errorBox: {
       backgroundColor: '#fdeaea',
@@ -280,21 +350,30 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       lineHeight: '1.6',
       boxSizing: 'border-box' as const,
     },
-    currentAnswerBox: {
+    textInputBox: {
       backgroundColor: '#f0f0f0',
-      padding: '15px',
+      padding: '20px',
       borderRadius: '8px',
       marginBottom: '20px',
-      fontSize: '14px',
-      color: '#2c3e50',
-      lineHeight: '1.6',
       boxSizing: 'border-box' as const,
-      borderLeft: '4px solid #3498db',
     },
-    currentAnswerLabel: {
+    textInputLabel: {
       fontWeight: 'bold' as const,
-      marginBottom: '8px',
+      marginBottom: '10px',
       color: '#3498db',
+      display: 'block',
+    },
+    textarea: {
+      width: '100%',
+      minHeight: '120px',
+      padding: '15px',
+      fontSize: '14px',
+      fontFamily: 'serif',
+      lineHeight: '1.6',
+      border: '1px solid #bdc3c7',
+      borderRadius: '4px',
+      boxSizing: 'border-box' as const,
+      color: '#2c3e50',
     },
     buttonContainer: {
       display: 'flex',
@@ -321,16 +400,51 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       backgroundColor: '#3498db',
       color: 'white',
     },
-    voiceButtonListening: {
-      backgroundColor: '#e74c3c',
-      animation: 'pulse 1s infinite',
-    },
     submitButton: {
       backgroundColor: '#27ae60',
       color: 'white',
       flex: 2,
     },
+    pauseButton: {
+      backgroundColor: '#f39c12',
+      color: 'white',
+    },
+    questionsList: {
+      backgroundColor: '#f8f9fa',
+      padding: '20px',
+      borderRadius: '8px',
+      maxHeight: '500px',
+      overflowY: 'auto' as const,
+      marginBottom: '20px',
+    },
+    questionItem: {
+      padding: '12px',
+      marginBottom: '10px',
+      backgroundColor: 'white',
+      borderRadius: '4px',
+      borderLeft: '4px solid #3498db',
+    },
   };
+
+  // 修正画面を表示中
+  if (showCorrectionPage) {
+    return (
+      <TextCorrectionPage
+        userId={userId}
+        token={token}
+        conversation={finalConversation}
+        onComplete={() => {
+          alert('自動修正が完了しました！');
+          setShowCorrectionPage(false);
+          setIsStarted(false);
+          setCurrentQuestionIndex(0);
+          setConversation([]);
+        }}
+      />
+    );
+  }
+
+  const progress = (currentQuestionIndex / INTERVIEW_QUESTIONS.length) * 100;
 
   return (
     <div style={styles.container}>
@@ -368,6 +482,30 @@ export default function InterviewPage({ userId, token }: { userId: number; token
               インタビューを開始する準備はできていますか？
             </p>
             <button
+              onClick={() => setShowQuestionsList(!showQuestionsList)}
+              style={{
+                ...styles.button,
+                backgroundColor: '#9b59b6',
+                color: 'white',
+                width: '200px',
+                marginBottom: '20px',
+              }}
+            >
+              📋 質問一覧を確認
+            </button>
+
+            {showQuestionsList && (
+              <div style={styles.questionsList}>
+                <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>全{INTERVIEW_QUESTIONS.length}の質問</h3>
+                {INTERVIEW_QUESTIONS.map((q, idx) => (
+                  <div key={idx} style={styles.questionItem}>
+                    <strong>Q{idx + 1}:</strong> {q}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
               onClick={startInterview}
               disabled={processing}
               style={{
@@ -382,6 +520,13 @@ export default function InterviewPage({ userId, token }: { userId: number; token
           </div>
         ) : (
           <>
+            <div style={styles.progressText}>
+              進捗: {currentQuestionIndex + 1} / {INTERVIEW_QUESTIONS.length}
+            </div>
+            <div style={styles.progressBar}>
+              <div style={{...styles.progressFill, width: `${progress}%`}}></div>
+            </div>
+
             {conversation.length > 0 && (
               <div style={styles.conversationBox}>
                 {conversation.map((msg, idx) => (
@@ -399,45 +544,64 @@ export default function InterviewPage({ userId, token }: { userId: number; token
               </div>
             )}
 
-            {currentQuestion && (
-              <div style={styles.questionBox}>
-                {currentQuestion}
-              </div>
-            )}
+            {isAnswering && (
+              <>
+                <div style={styles.questionBox}>
+                  {getCurrentQuestion()}
+                </div>
 
-            {isAnswering && currentAnswer && (
-              <div style={styles.currentAnswerBox}>
-                <div style={styles.currentAnswerLabel}>📝 現在の回答：</div>
-                {currentAnswer}
-              </div>
-            )}
+                <div style={styles.textInputBox}>
+                  <label style={styles.textInputLabel}>💬 テキストで入力：</label>
+                  <textarea
+                    value={currentAnswer}
+                    onChange={(e) => {
+                      setCurrentAnswer(e.target.value);
+                      setUnsavedChanges(true);
+                    }}
+                    placeholder="ここに答えを入力してください..."
+                    style={styles.textarea}
+                  />
+                </div>
 
-            {isAnswering && currentQuestion && (
-              <div style={styles.buttonContainer}>
-                <button
-                  onClick={startVoiceInput}
-                  disabled={listening || processing}
-                  style={{
-                    ...styles.button,
-                    ...styles.voiceButton,
-                    ...(listening ? styles.voiceButtonListening : {}),
-                    opacity: listening || processing ? 0.6 : 1,
-                  }}
-                >
-                  🎤 {listening ? '聞取中...' : '音声で答える'}
-                </button>
-                <button
-                  onClick={submitAnswer}
-                  disabled={!currentAnswer.trim() || processing}
-                  style={{
-                    ...styles.button,
-                    ...styles.submitButton,
-                    opacity: !currentAnswer.trim() || processing ? 0.6 : 1,
-                  }}
-                >
-                  {processing ? '処理中...' : '次の話題へ →'}
-                </button>
-              </div>
+                <div style={styles.buttonContainer}>
+                  <button
+                    onClick={startVoiceInput}
+                    disabled={listening || processing}
+                    style={{
+                      ...styles.button,
+                      ...styles.voiceButton,
+                      opacity: listening || processing ? 0.6 : 1,
+                    }}
+                  >
+                    🎤 {listening ? '聴取中...' : '音声で答える'}
+                  </button>
+                  <button
+                    onClick={submitAnswer}
+                    disabled={!currentAnswer.trim() || processing}
+                    style={{
+                      ...styles.button,
+                      ...styles.submitButton,
+                      opacity: !currentAnswer.trim() || processing ? 0.6 : 1,
+                    }}
+                  >
+                    {processing ? '処理中...' : '次の質問へ →'}
+                  </button>
+                </div>
+
+                {unsavedChanges && (
+                  <button
+                    onClick={saveAndPause}
+                    style={{
+                      ...styles.button,
+                      ...styles.pauseButton,
+                      width: '100%',
+                      marginTop: '10px',
+                    }}
+                  >
+                    💾 進捗を保存して一時中断
+                  </button>
+                )}
+              </>
             )}
           </>
         )}
