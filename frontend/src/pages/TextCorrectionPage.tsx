@@ -166,6 +166,8 @@ export default function TextCorrectionPage({
             const apiUrl = import.meta.env.VITE_API_URL;
             if (!apiUrl) throw new Error('API URLが設定されていません');
 
+            console.log('💾 タイムラインにテキストを保存中...');
+
             // タイムラインに保存
             const response = await fetch(`${apiUrl}/api/timeline`, {
                 method: 'POST',
@@ -177,25 +179,63 @@ export default function TextCorrectionPage({
                     user_id: userId,
                     stage: 'interview',
                     event_title: 'インタビュー完了',
-                    event_description: 'AI自動修正済み',
+                    event_description: editedText,
                     edited_content: editedText,
-                    // 写真データも一緒に保存
-                    answersWithPhotos: answersWithPhotos || [],
-                    uploadedPhotos: uploadedPhotos,
                 }),
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('❌ Save error:', errorText);
+                const errorData = await response.text();
+                console.error('❌ Save error:', errorData);
                 throw new Error(`保存に失敗しました (${response.status})`);
             }
 
-            alert('完了しました！');
+            const savedData = await response.json();
+            console.log('✅ Timeline saved:', savedData);
+
+            // ✨ PDF 生成処理
+            console.log('📄 PDF を生成中...');
+            const pdfResponse = await fetch(`${apiUrl}/pdf/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    userId: userId
+                }),
+            });
+
+            if (!pdfResponse.ok) {
+                const pdfErrorData = await pdfResponse.text();
+                console.error('⚠️ PDF生成に失敗:', pdfErrorData);
+                console.warn('⚠️ PDF生成に失敗しましたが、テキストは保存されました');
+                // PDF生成が失敗してもテキスト保存は成功しているので続行
+            } else {
+                const pdfData = await pdfResponse.json();
+                console.log('✅ PDF生成成功:', pdfData);
+
+                // PDF をダウンロード
+                if (pdfData.downloadUrl) {
+                    console.log('📥 PDFをダウンロード中...');
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = `${apiUrl}${pdfData.downloadUrl}`;
+                    downloadLink.download = pdfData.filename || 'jibunshi.pdf';
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    console.log('✅ PDFダウンロード完了');
+                }
+            }
+
+            // 完了処理
+            alert('✅ テキストを保存しました！');
             onComplete();
+
         } catch (error) {
             console.error('❌ Save error:', error);
-            alert('保存に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
+            const errorMessage = error instanceof Error ? error.message : '保存に失敗しました';
+            alert(`エラー: ${errorMessage}`);
         } finally {
             setIsSaving(false);
         }
@@ -203,7 +243,7 @@ export default function TextCorrectionPage({
 
     const styles = {
         container: {
-            maxWidth: '900px',
+            maxWidth: '1000px',
             margin: '0 auto',
             padding: '20px',
             boxSizing: 'border-box' as const,
@@ -231,97 +271,75 @@ export default function TextCorrectionPage({
             marginBottom: '20px',
             borderLeft: '4px solid #c53030',
         },
-        successBox: {
-            backgroundColor: '#c6f6d5',
-            color: '#22543d',
+        uploadErrorBox: {
+            backgroundColor: '#fdeaea',
+            color: '#c53030',
             padding: '15px',
             borderRadius: '4px',
             marginBottom: '20px',
-            borderLeft: '4px solid #22543d',
-        },
-        card: {
-            backgroundColor: 'white',
-            padding: '30px',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            marginBottom: '20px',
-            boxSizing: 'border-box' as const,
+            borderLeft: '4px solid #c53030',
         },
         loadingBox: {
             textAlign: 'center' as const,
             padding: '40px',
             color: '#7f8c8d',
         },
-        spinner: {
-            display: 'inline-block',
-            width: '30px',
-            height: '30px',
-            border: '3px solid #ecf0f1',
-            borderTop: '3px solid #3498db',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            marginRight: '10px',
-        },
-        textContent: {
-            backgroundColor: '#f8f9fa',
-            padding: '25px',
+        contentBox: {
+            backgroundColor: 'white',
             borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            padding: '30px',
+            marginBottom: '20px',
+        },
+        textPreview: {
+            fontSize: '14px',
             lineHeight: '1.8',
             color: '#2c3e50',
-            fontSize: '15px',
+            padding: '20px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '4px',
             marginBottom: '20px',
+            borderLeft: '4px solid #3498db',
             whiteSpace: 'pre-wrap' as const,
-            wordBreak: 'break-word' as const,
+            wordWrap: 'break-word' as const,
         },
         editableTextarea: {
             width: '100%',
-            minHeight: '200px',
+            minHeight: '300px',
             padding: '15px',
-            fontSize: '15px',
+            fontSize: '14px',
             fontFamily: 'serif',
             lineHeight: '1.8',
-            border: '2px solid #3498db',
-            borderRadius: '8px',
+            border: '1px solid #bdc3c7',
+            borderRadius: '4px',
             boxSizing: 'border-box' as const,
             marginBottom: '20px',
         },
         photosSection: {
-            marginTop: '30px',
-            padding: '20px',
-            backgroundColor: '#f0f4f8',
-            borderRadius: '8px',
-        },
-        photosSectionTitle: {
-            color: '#2c3e50',
-            fontSize: '16px',
-            fontWeight: 'bold' as const,
-            marginBottom: '15px',
-        },
-        answerWithPhotoBlock: {
             marginBottom: '20px',
             padding: '15px',
-            backgroundColor: 'white',
-            borderRadius: '6px',
-            borderLeft: '4px solid #3498db',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '4px',
+            borderLeft: '4px solid #27ae60',
         },
-        answerText: {
-            fontSize: '14px',
-            color: '#555',
-            marginBottom: '10px',
-            lineHeight: '1.6',
+        photosSectionTitle: {
+            fontSize: '16px',
+            fontWeight: 'bold' as const,
+            color: '#2c3e50',
+            marginBottom: '15px',
         },
         photosContainer: {
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
             gap: '15px',
-            marginTop: '10px',
+            marginBottom: '15px',
         },
         photoCard: {
-            border: '1px solid #ddd',
+            position: 'relative' as const,
+            backgroundColor: 'white',
             borderRadius: '4px',
             overflow: 'hidden',
-            backgroundColor: 'white',
-            position: 'relative' as const,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
         },
         photoImage: {
             width: '100%',
@@ -330,11 +348,12 @@ export default function TextCorrectionPage({
             display: 'block',
         },
         photoLabel: {
-            padding: '8px',
             fontSize: '12px',
-            backgroundColor: '#f8f9fa',
-            color: '#666',
-            maxHeight: '60px',
+            color: '#7f8c8d',
+            padding: '8px',
+            backgroundColor: '#ecf0f1',
+            textAlign: 'center' as const,
+            whiteSpace: 'nowrap' as const,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
         },
@@ -342,98 +361,126 @@ export default function TextCorrectionPage({
             position: 'absolute' as const,
             top: '5px',
             right: '5px',
-            backgroundColor: 'rgba(255, 0, 0, 0.7)',
+            backgroundColor: '#e74c3c',
             color: 'white',
             border: 'none',
             borderRadius: '50%',
-            width: '24px',
-            height: '24px',
+            width: '30px',
+            height: '30px',
             cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: 'bold' as const,
+            fontSize: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'background-color 0.3s ease',
         },
-        button: {
-            padding: '12px 20px',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold' as const,
-            marginRight: '10px',
+        answerWithPhotoBlock: {
+            backgroundColor: 'white',
+            padding: '15px',
+            marginBottom: '15px',
+            borderRadius: '4px',
+            borderLeft: '4px solid #3498db',
+        },
+        answerText: {
+            fontSize: '13px',
+            color: '#2c3e50',
+            lineHeight: '1.6',
             marginBottom: '10px',
+            whiteSpace: 'pre-wrap' as const,
+            wordWrap: 'break-word' as const,
         },
         buttonContainer: {
             display: 'flex',
             gap: '10px',
-            marginTop: '20px',
+            justifyContent: 'flex-end',
             flexWrap: 'wrap' as const,
+        },
+        button: {
+            padding: '12px 24px',
+            fontSize: '14px',
+            fontWeight: 'bold' as const,
+            borderRadius: '4px',
+            cursor: 'pointer',
+            border: 'none',
+            transition: 'all 0.3s ease',
+            minHeight: '44px',
+            minWidth: '120px',
         },
         completeButton: {
             backgroundColor: '#27ae60',
             color: 'white',
         },
+        completeButtonHover: {
+            backgroundColor: '#229954',
+        },
         uploadButton: {
             backgroundColor: '#3498db',
             color: 'white',
+        },
+        uploadButtonHover: {
+            backgroundColor: '#2980b9',
         },
         goBackButton: {
             backgroundColor: '#95a5a6',
             color: 'white',
         },
+        goBackButtonHover: {
+            backgroundColor: '#7f8c8d',
+        },
     };
 
-    return (
-        <div style={styles.container}>
-            <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
-
-            <div style={styles.header}>
-                {stage === 'correction' ? (
-                    <>
-                        <h1 style={styles.title}>✨ AI自動文章修正</h1>
-                        <p style={styles.subtitle}>あなたの回答をAIが自動修正しています...</p>
-                    </>
-                ) : (
-                    <>
-                        <h1 style={styles.title}>📝 修正内容の確認・編集</h1>
-                        <p style={styles.subtitle}>修正内容を確認し、必要に応じて編集できます</p>
-                    </>
-                )}
+    if (loading) {
+        return (
+            <div style={styles.container}>
+                <div style={styles.loadingBox}>
+                    <p>テキストを修正中...</p>
+                </div>
             </div>
+        );
+    }
 
-            {error && (
+    if (error) {
+        return (
+            <div style={styles.container}>
                 <div style={styles.errorBox}>
                     <strong>エラー:</strong> {error}
                 </div>
-            )}
+            </div>
+        );
+    }
+
+    return (
+        <div style={styles.container}>
+            <div style={styles.header}>
+                <h1 style={styles.title}>
+                    {stage === 'correction' ? '📝 テキスト確認' : '✏️ テキスト編集'}
+                </h1>
+                <p style={styles.subtitle}>
+                    {stage === 'correction'
+                        ? 'AIが修正したテキストを確認し、必要に応じて編集してください'
+                        : '最終的なテキストを編集し、保存してください'
+                    }
+                </p>
+            </div>
 
             {uploadError && (
-                <div style={styles.errorBox}>
+                <div style={styles.uploadErrorBox}>
                     <strong>アップロードエラー:</strong> {uploadError}
                 </div>
             )}
 
-            <div style={styles.card}>
-                {loading ? (
-                    <div style={styles.loadingBox}>
-                        <div style={styles.spinner}></div>
-                        <p>修正中です。お待ちください...</p>
-                    </div>
-                ) : stage === 'correction' ? (
-                    // 修正確認画面
+            <div style={styles.contentBox}>
+                {stage === 'correction' ? (
+                    // 確認・アップロード画面
                     <>
                         <h2 style={{ color: '#2c3e50', marginBottom: '15px', fontSize: '18px' }}>
-                            📖 修正版テキスト
+                            🔍 修正されたテキスト
                         </h2>
-                        <div style={styles.textContent}>
-                            {correctedText}
+                        <div style={styles.textPreview}>
+                            {correctedText || 'テキストはまだ読み込まれていません'}
                         </div>
 
-                        {/* 写真とコメント表示 */}
+                        {/* インタビュー時の回答と写真表示 */}
                         {answersWithPhotos && answersWithPhotos.length > 0 && (
                             <div style={styles.photosSection}>
                                 <h3 style={styles.photosSectionTitle}>📷 インタビュー時の写真とコメント</h3>
@@ -610,6 +657,7 @@ export default function TextCorrectionPage({
                                     ...styles.button,
                                     ...styles.completeButton,
                                     opacity: isSaving ? 0.6 : 1,
+                                    cursor: isSaving ? 'not-allowed' : 'pointer',
                                 }}
                             >
                                 {isSaving ? '保存中...' : '保存して完了 ✓'}
