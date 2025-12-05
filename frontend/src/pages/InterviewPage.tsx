@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import TextCorrectionPage from './TextCorrectionPage';
 
 interface Message {
@@ -6,10 +6,30 @@ interface Message {
   content: string;
 }
 
+interface SelectedPhoto {
+  id: number;
+  file_path: string;
+  description: string;
+}
+
+interface AnswerWithPhotos {
+  text: string;
+  photos: SelectedPhoto[];
+}
+
 interface InterviewSession {
   conversation: Message[];
+  answersWithPhotos: AnswerWithPhotos[];
   currentQuestionIndex: number;
   timestamp: number;
+}
+
+interface Photo {
+  id: number;
+  filename: string;
+  file_path: string;
+  description: string;
+  uploaded_at: string;
 }
 
 // 新しい質問リスト（21個）
@@ -52,8 +72,11 @@ const INTERVIEW_QUESTIONS = [
 
 export default function InterviewPage({ userId, token }: { userId: number; token: string | null }) {
   const [conversation, setConversation] = useState<Message[]>([]);
+  const [answersWithPhotos, setAnswersWithPhotos] = useState<AnswerWithPhotos[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [currentAnswer, setCurrentAnswer] = useState<string>('');
+  const [currentPhotos, setCurrentPhotos] = useState<SelectedPhoto[]>([]);
+  const [availablePhotos, setAvailablePhotos] = useState<Photo[]>([]);
   const [listening, setListening] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
@@ -62,7 +85,61 @@ export default function InterviewPage({ userId, token }: { userId: number; token
   const [error, setError] = useState<string | null>(null);
   const [showCorrectionPage, setShowCorrectionPage] = useState(false);
   const [finalConversation, setFinalConversation] = useState<Message[]>([]);
+  const [finalAnswersWithPhotos, setFinalAnswersWithPhotos] = useState<AnswerWithPhotos[]>([]);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+
+  // ファイル入力用ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // PCから直接写真を選択
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        const selectedPhoto: SelectedPhoto = {
+          id: Date.now() + i,
+          file_path: base64,
+          description: file.name,
+        };
+
+        setCurrentPhotos((prev) => [...prev, selectedPhoto]);
+        setUnsavedChanges(true);
+      };
+
+      reader.readAsDataURL(file);
+    }
+
+    // ファイル入力をリセット
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // 写真一覧を取得（オプション機能 - 削除してもOK）
+  const fetchPhotos = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const response = await fetch(`${apiUrl}/api/photos`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const photos = await response.json();
+        setAvailablePhotos(photos);
+      }
+    } catch (error) {
+      console.error('❌ 写真取得エラー:', error);
+    }
+  };
 
   // LocalStorage からセッションを復元
   useEffect(() => {
@@ -73,6 +150,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
         // セッションが24時間以内であれば復元
         if (Date.now() - session.timestamp < 24 * 60 * 60 * 1000) {
           setConversation(session.conversation);
+          setAnswersWithPhotos(session.answersWithPhotos);
           setCurrentQuestionIndex(session.currentQuestionIndex);
           setIsStarted(true);
           setIsAnswering(true);
@@ -83,7 +161,10 @@ export default function InterviewPage({ userId, token }: { userId: number; token
         console.error('セッション復元エラー:', e);
       }
     }
-  }, [userId]);
+
+    // 写真を取得（今後の拡張機能用）
+    fetchPhotos();
+  }, [userId, token]);
 
   // 自動保存（30秒ごと）
   useEffect(() => {
@@ -94,11 +175,12 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     }, 30000); // 30秒ごと
 
     return () => clearInterval(interval);
-  }, [conversation, currentQuestionIndex, userId]);
+  }, [conversation, answersWithPhotos, currentQuestionIndex, userId]);
 
   const saveSessionToLocalStorage = () => {
     const session: InterviewSession = {
       conversation,
+      answersWithPhotos,
       currentQuestionIndex,
       timestamp: Date.now(),
     };
@@ -121,6 +203,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       setConversation([{ role: 'assistant', content: question }]);
       setIsAnswering(true);
       setCurrentAnswer('');
+      setCurrentPhotos([]);
       saveSessionToLocalStorage();
     } catch (error) {
       console.error('❌ Interview error:', error);
@@ -176,6 +259,25 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     recognition.start();
   };
 
+  const addPhoto = (photo: Photo) => {
+    const selectedPhoto: SelectedPhoto = {
+      id: photo.id,
+      file_path: photo.file_path,
+      description: photo.description,
+    };
+
+    if (!currentPhotos.find(p => p.id === photo.id)) {
+      setCurrentPhotos([...currentPhotos, selectedPhoto]);
+      setUnsavedChanges(true);
+    }
+    setShowPhotoModal(false);
+  };
+
+  const removePhoto = (photoId: number) => {
+    setCurrentPhotos(currentPhotos.filter(p => p.id !== photoId));
+    setUnsavedChanges(true);
+  };
+
   const submitAnswer = async () => {
     if (!currentAnswer.trim()) {
       alert('何か答えてください');
@@ -186,8 +288,15 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       ...conversation,
       { role: 'user', content: currentAnswer },
     ];
+    const newAnswersWithPhotos: AnswerWithPhotos[] = [
+      ...answersWithPhotos,
+      { text: currentAnswer, photos: currentPhotos },
+    ];
+
     setConversation(newConversation);
+    setAnswersWithPhotos(newAnswersWithPhotos);
     setCurrentAnswer('');
+    setCurrentPhotos([]);
     setIsAnswering(false);
     setProcessing(true);
     setError(null);
@@ -198,8 +307,9 @@ export default function InterviewPage({ userId, token }: { userId: number; token
 
       if (nextIndex >= INTERVIEW_QUESTIONS.length) {
         // インタビュー完了
-        await saveConversation(newConversation);
+        await saveConversation(newConversation, newAnswersWithPhotos);
         setFinalConversation(newConversation);
+        setFinalAnswersWithPhotos(newAnswersWithPhotos);
         setShowCorrectionPage(true);
         localStorage.removeItem(`interview_session_${userId}`);
       } else {
@@ -228,7 +338,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     alert('進捗を保存しました。後で続きから再開できます。');
   };
 
-  const saveConversation = async (finalConversation: Message[]) => {
+  const saveConversation = async (finalConversation: Message[], finalAnswersWithPhotos: AnswerWithPhotos[]) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) return;
@@ -247,6 +357,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
           user_id: userId,
           conversation: finalConversation,
           responses,
+          answersWithPhotos: finalAnswersWithPhotos,
         }),
       });
 
@@ -254,6 +365,8 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       console.error('❌ 保存エラー:', error);
     }
   };
+
+  const progress = (currentQuestionIndex / INTERVIEW_QUESTIONS.length) * 100;
 
   const styles = {
     container: {
@@ -375,6 +488,38 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       boxSizing: 'border-box' as const,
       color: '#2c3e50',
     },
+    photosContainer: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+      gap: '10px',
+      marginBottom: '20px',
+      marginTop: '10px',
+    },
+    photoCard: {
+      position: 'relative' as const,
+      borderRadius: '4px',
+      overflow: 'hidden',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    },
+    photoImage: {
+      width: '100%',
+      height: '100px',
+      objectFit: 'cover' as const,
+    },
+    removePhotoButton: {
+      position: 'absolute' as const,
+      top: '5px',
+      right: '5px',
+      backgroundColor: '#e74c3c',
+      color: 'white',
+      border: 'none',
+      borderRadius: '50%',
+      width: '24px',
+      height: '24px',
+      cursor: 'pointer',
+      fontSize: '16px',
+      padding: '0',
+    },
     buttonContainer: {
       display: 'flex',
       gap: '10px',
@@ -405,6 +550,10 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       color: 'white',
       flex: 2,
     },
+    photoButton: {
+      backgroundColor: '#9b59b6',
+      color: 'white',
+    },
     pauseButton: {
       backgroundColor: '#f39c12',
       color: 'white',
@@ -424,6 +573,48 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       borderRadius: '4px',
       borderLeft: '4px solid #3498db',
     },
+    modal: {
+      position: 'fixed' as const,
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000,
+    },
+    modalContent: {
+      backgroundColor: 'white',
+      padding: '30px',
+      borderRadius: '8px',
+      maxWidth: '600px',
+      maxHeight: '80vh',
+      overflowY: 'auto' as const,
+      boxSizing: 'border-box' as const,
+    },
+    modalTitle: {
+      fontSize: '20px',
+      fontWeight: 'bold' as const,
+      marginBottom: '20px',
+      color: '#2c3e50',
+    },
+    photoGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+      gap: '10px',
+    },
+    photoGridItem: {
+      cursor: 'pointer',
+      borderRadius: '4px',
+      overflow: 'hidden',
+      border: '2px solid transparent',
+      transition: 'all 0.3s ease',
+    },
+    photoGridItemHover: {
+      border: '2px solid #3498db',
+    },
   };
 
   // 修正画面を表示中
@@ -433,18 +624,18 @@ export default function InterviewPage({ userId, token }: { userId: number; token
         userId={userId}
         token={token}
         conversation={finalConversation}
+        answersWithPhotos={finalAnswersWithPhotos}
         onComplete={() => {
           alert('自動修正が完了しました！');
           setShowCorrectionPage(false);
           setIsStarted(false);
           setCurrentQuestionIndex(0);
           setConversation([]);
+          setAnswersWithPhotos([]);
         }}
       />
     );
   }
-
-  const progress = (currentQuestionIndex / INTERVIEW_QUESTIONS.length) * 100;
 
   return (
     <div style={styles.container}>
@@ -466,7 +657,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       </div>
 
       <div style={styles.info}>
-        AIがあなたに質問していきます。自由にお答えください。マイクボタンで音声入力できます。言い足りなければ、もう一度マイクボタンを押して追加できます。
+        AIがあなたに質問していきます。自由にお答えください。マイクボタンで音声入力できます。言い足りなければ、もう一度マイクボタンを押して追加できます。PCから写真を直接選んで追加することもできます。
       </div>
 
       {error && (
@@ -561,9 +752,59 @@ export default function InterviewPage({ userId, token }: { userId: number; token
                     placeholder="ここに答えを入力してください..."
                     style={styles.textarea}
                   />
+
+                  {/* 写真表示 */}
+                  {currentPhotos.length > 0 && (
+                    <div>
+                      <p style={{ marginTop: '15px', fontWeight: 'bold', color: '#2c3e50' }}>
+                        📷 選択した写真 ({currentPhotos.length}枚)
+                      </p>
+                      <div style={styles.photosContainer}>
+                        {currentPhotos.map((photo) => (
+                          <div key={photo.id} style={styles.photoCard}>
+                            <img
+                              src={photo.file_path}
+                              alt="selected"
+                              style={styles.photoImage}
+                            />
+                            <button
+                              onClick={() => removePhoto(photo.id)}
+                              style={styles.removePhotoButton}
+                            >
+                              ×
+                            </button>
+                            {photo.description && (
+                              <div style={{ fontSize: '11px', padding: '5px', backgroundColor: '#f0f0f0' }}>
+                                {photo.description}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
+                {/* 隠しファイル入力 */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                />
+
                 <div style={styles.buttonContainer}>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      ...styles.button,
+                      ...styles.photoButton,
+                    }}
+                  >
+                    📷 写真を追加
+                  </button>
                   <button
                     onClick={startVoiceInput}
                     disabled={listening || processing}
@@ -606,6 +847,51 @@ export default function InterviewPage({ userId, token }: { userId: number; token
           </>
         )}
       </div>
+
+      {/* 写真選択モーダル（アップロード済みから選ぶ場合用） */}
+      {showPhotoModal && (
+        <div style={styles.modal} onClick={() => setShowPhotoModal(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>📷 写真を選択</h2>
+            {availablePhotos.length === 0 ? (
+              <p style={{ color: '#7f8c8d' }}>
+                アップロード済みの写真がありません。写真を追加ボタンからPCから選んでください。
+              </p>
+            ) : (
+              <div style={styles.photoGrid}>
+                {availablePhotos.map((photo) => (
+                  <div
+                    key={photo.id}
+                    style={{
+                      ...styles.photoGridItem,
+                      ...(currentPhotos.find(p => p.id === photo.id) ? styles.photoGridItemHover : {}),
+                    }}
+                    onClick={() => addPhoto(photo)}
+                  >
+                    <img
+                      src={`${import.meta.env.VITE_API_URL}${photo.file_path}`}
+                      alt={photo.filename}
+                      style={{ width: '100%', height: '100px', objectFit: 'cover' }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setShowPhotoModal(false)}
+              style={{
+                ...styles.button,
+                width: '100%',
+                marginTop: '20px',
+                backgroundColor: '#3498db',
+                color: 'white',
+              }}
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
