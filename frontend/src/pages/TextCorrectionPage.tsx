@@ -162,6 +162,11 @@ export default function TextCorrectionPage({
 
     const handleSaveCompletion = async () => {
         setIsSaving(true);
+
+        console.log('🔐 Current Token:', token);
+        console.log('📤 API URL:', import.meta.env.VITE_API_URL);
+        console.log('👤 User ID:', userId);
+
         try {
             const apiUrl = import.meta.env.VITE_API_URL;
             if (!apiUrl) throw new Error('API URLが設定されていません');
