@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_URL } from '../config';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -38,7 +39,7 @@ export default function TextCorrectionPage({
     const [correctedText, setCorrectedText] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [stage, setStage] = useState('correction'); // 'correction' または 'completion'
+    const [stage, setStage] = useState('correction');
     const [editedText, setEditedText] = useState<string>('');
     const [isSaving, setIsSaving] = useState(false);
     const [uploadedPhotos, setUploadedPhotos] = useState<UploadedPhoto[]>([]);
@@ -51,10 +52,9 @@ export default function TextCorrectionPage({
 
     const correctText = async () => {
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
+            const apiUrl = API_URL;
             if (!apiUrl) throw new Error('API URLが設定されていません');
 
-            // 会話からユーザーの回答のみを抽出
             const responses = conversation
                 .filter(msg => msg.role === 'user')
                 .map(msg => msg.content);
@@ -103,10 +103,9 @@ export default function TextCorrectionPage({
         setUploadError(null);
 
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
+            const apiUrl = API_URL;
             if (!apiUrl) throw new Error('API URLが設定されていません');
 
-            // 各ファイルをアップロード
             const newPhotos: UploadedPhoto[] = [];
 
             for (const file of Array.from(files)) {
@@ -145,7 +144,6 @@ export default function TextCorrectionPage({
             setUploadedPhotos([...uploadedPhotos, ...newPhotos]);
             console.log('✅ All photos uploaded successfully');
 
-            // ファイル入力をリセット
             e.target.value = '';
         } catch (err) {
             console.error('❌ Upload error:', err);
@@ -164,14 +162,31 @@ export default function TextCorrectionPage({
         setIsSaving(true);
 
         console.log('🔐 Current Token:', token);
-        console.log('📤 API URL:', import.meta.env.VITE_API_URL);
+        console.log('📤 API URL:', API_URL);
         console.log('👤 User ID:', userId);
+        console.log('📸 Uploaded Photos:', uploadedPhotos);
 
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
+            const apiUrl = API_URL;
             if (!apiUrl) throw new Error('API URLが設定されていません');
 
             console.log('💾 タイムラインにテキストを保存中...');
+
+            // 📸 アップロード済み写真を answersWithPhotos に統合
+            const photosToSave = answersWithPhotos ? [...answersWithPhotos] : [];
+            if (uploadedPhotos.length > 0) {
+                // アップロード済み写真を最後に追加
+                photosToSave.push({
+                    text: '',
+                    photos: uploadedPhotos.map(photo => ({
+                        id: photo.id,
+                        file_path: photo.file_path,
+                        description: photo.filename
+                    }))
+                });
+            }
+
+            console.log('📦 Photos to save:', photosToSave);
 
             // タイムラインに保存
             const response = await fetch(`${apiUrl}/api/timeline`, {
@@ -186,6 +201,7 @@ export default function TextCorrectionPage({
                     event_title: 'インタビュー完了',
                     event_description: editedText,
                     edited_content: editedText,
+                    answersWithPhotos: photosToSave,
                 }),
             });
 
@@ -200,7 +216,7 @@ export default function TextCorrectionPage({
 
             // ✨ PDF 生成処理
             console.log('📄 PDF を生成中...');
-            const pdfResponse = await fetch(`${apiUrl}/pdf/generate`, {
+            const pdfResponse = await fetch(`${apiUrl}/api/pdf/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -215,7 +231,6 @@ export default function TextCorrectionPage({
                 const pdfErrorData = await pdfResponse.text();
                 console.error('⚠️ PDF生成に失敗:', pdfErrorData);
                 console.warn('⚠️ PDF生成に失敗しましたが、テキストは保存されました');
-                // PDF生成が失敗してもテキスト保存は成功しているので続行
             } else {
                 const pdfData = await pdfResponse.json();
                 console.log('✅ PDF生成成功:', pdfData);
@@ -248,7 +263,7 @@ export default function TextCorrectionPage({
 
     const styles = {
         container: {
-            maxWidth: '1000px',
+            maxWidth: '900px',
             margin: '0 auto',
             padding: '20px',
             boxSizing: 'border-box' as const,
@@ -268,15 +283,14 @@ export default function TextCorrectionPage({
             color: '#7f8c8d',
             marginBottom: '20px',
         },
-        errorBox: {
-            backgroundColor: '#fdeaea',
-            color: '#c53030',
-            padding: '15px',
-            borderRadius: '4px',
+        card: {
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            padding: '30px',
             marginBottom: '20px',
-            borderLeft: '4px solid #c53030',
         },
-        uploadErrorBox: {
+        errorBox: {
             backgroundColor: '#fdeaea',
             color: '#c53030',
             padding: '15px',
@@ -289,28 +303,20 @@ export default function TextCorrectionPage({
             padding: '40px',
             color: '#7f8c8d',
         },
-        contentBox: {
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            padding: '30px',
-            marginBottom: '20px',
-        },
-        textPreview: {
-            fontSize: '14px',
-            lineHeight: '1.8',
-            color: '#2c3e50',
+        correctedTextBox: {
+            backgroundColor: '#ecf0f1',
             padding: '20px',
-            backgroundColor: '#f8f9fa',
             borderRadius: '4px',
             marginBottom: '20px',
-            borderLeft: '4px solid #3498db',
-            whiteSpace: 'pre-wrap' as const,
-            wordWrap: 'break-word' as const,
+            maxHeight: '400px',
+            overflowY: 'auto' as const,
+            fontFamily: 'serif',
+            lineHeight: '1.8',
+            color: '#2c3e50',
         },
         editableTextarea: {
             width: '100%',
-            minHeight: '300px',
+            minHeight: '400px',
             padding: '15px',
             fontSize: '14px',
             fontFamily: 'serif',
@@ -325,13 +331,13 @@ export default function TextCorrectionPage({
             padding: '15px',
             backgroundColor: '#f8f9fa',
             borderRadius: '4px',
-            borderLeft: '4px solid #27ae60',
         },
         photosSectionTitle: {
             fontSize: '16px',
             fontWeight: 'bold' as const,
             color: '#2c3e50',
             marginBottom: '15px',
+            marginTop: 0,
         },
         photosContainer: {
             display: 'grid',
@@ -340,59 +346,56 @@ export default function TextCorrectionPage({
             marginBottom: '15px',
         },
         photoCard: {
-            position: 'relative' as const,
             backgroundColor: 'white',
-            borderRadius: '4px',
+            borderRadius: '8px',
             overflow: 'hidden',
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            transition: 'transform 0.3s ease',
         },
         photoImage: {
             width: '100%',
             height: '150px',
             objectFit: 'cover' as const,
-            display: 'block',
         },
         photoLabel: {
+            padding: '8px',
             fontSize: '12px',
             color: '#7f8c8d',
-            padding: '8px',
-            backgroundColor: '#ecf0f1',
             textAlign: 'center' as const,
-            whiteSpace: 'nowrap' as const,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-        },
-        removeButton: {
-            position: 'absolute' as const,
-            top: '5px',
-            right: '5px',
-            backgroundColor: '#e74c3c',
-            color: 'white',
-            border: 'none',
-            borderRadius: '50%',
-            width: '30px',
-            height: '30px',
-            cursor: 'pointer',
-            fontSize: '18px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background-color 0.3s ease',
+            borderTop: '1px solid #ecf0f1',
         },
         answerWithPhotoBlock: {
-            backgroundColor: 'white',
+            marginBottom: '20px',
             padding: '15px',
-            marginBottom: '15px',
+            backgroundColor: 'white',
             borderRadius: '4px',
-            borderLeft: '4px solid #3498db',
+            border: '1px solid #ecf0f1',
         },
         answerText: {
-            fontSize: '13px',
+            fontSize: '14px',
             color: '#2c3e50',
             lineHeight: '1.6',
             marginBottom: '10px',
-            whiteSpace: 'pre-wrap' as const,
-            wordWrap: 'break-word' as const,
+        },
+        button: {
+            padding: '12px 24px',
+            fontSize: '14px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            border: 'none',
+            transition: 'all 0.3s ease',
+        },
+        completeButton: {
+            backgroundColor: '#27ae60',
+            color: 'white',
+        },
+        uploadButton: {
+            backgroundColor: '#3498db',
+            color: 'white',
+        },
+        goBackButton: {
+            backgroundColor: '#95a5a6',
+            color: 'white',
         },
         buttonContainer: {
             display: 'flex',
@@ -400,37 +403,15 @@ export default function TextCorrectionPage({
             justifyContent: 'flex-end',
             flexWrap: 'wrap' as const,
         },
-        button: {
-            padding: '12px 24px',
-            fontSize: '14px',
-            fontWeight: 'bold' as const,
-            borderRadius: '4px',
+        removeButton: {
+            backgroundColor: '#e74c3c',
+            color: 'white',
+            padding: '6px 12px',
+            fontSize: '12px',
+            borderRadius: '3px',
             cursor: 'pointer',
             border: 'none',
-            transition: 'all 0.3s ease',
-            minHeight: '44px',
-            minWidth: '120px',
-        },
-        completeButton: {
-            backgroundColor: '#27ae60',
-            color: 'white',
-        },
-        completeButtonHover: {
-            backgroundColor: '#229954',
-        },
-        uploadButton: {
-            backgroundColor: '#3498db',
-            color: 'white',
-        },
-        uploadButtonHover: {
-            backgroundColor: '#2980b9',
-        },
-        goBackButton: {
-            backgroundColor: '#95a5a6',
-            color: 'white',
-        },
-        goBackButtonHover: {
-            backgroundColor: '#7f8c8d',
+            marginTop: '8px',
         },
     };
 
@@ -457,35 +438,21 @@ export default function TextCorrectionPage({
     return (
         <div style={styles.container}>
             <div style={styles.header}>
-                <h1 style={styles.title}>
-                    {stage === 'correction' ? '📝 テキスト確認' : '✏️ テキスト編集'}
-                </h1>
-                <p style={styles.subtitle}>
-                    {stage === 'correction'
-                        ? 'AIが修正したテキストを確認し、必要に応じて編集してください'
-                        : '最終的なテキストを編集し、保存してください'
-                    }
-                </p>
+                <h1 style={styles.title}>✏️ 自分史の確認・編集</h1>
+                <p style={styles.subtitle}>AIが修正したテキストを確認して、必要に応じて編集できます</p>
             </div>
 
-            {uploadError && (
-                <div style={styles.uploadErrorBox}>
-                    <strong>アップロードエラー:</strong> {uploadError}
-                </div>
-            )}
-
-            <div style={styles.contentBox}>
+            <div style={styles.card}>
                 {stage === 'correction' ? (
-                    // 確認・アップロード画面
                     <>
                         <h2 style={{ color: '#2c3e50', marginBottom: '15px', fontSize: '18px' }}>
-                            🔍 修正されたテキスト
+                            📖 修正済みテキスト
                         </h2>
-                        <div style={styles.textPreview}>
-                            {correctedText || 'テキストはまだ読み込まれていません'}
+                        <div style={styles.correctedTextBox}>
+                            {correctedText || 'テキストが読み込まれていません'}
                         </div>
 
-                        {/* インタビュー時の回答と写真表示 */}
+                        {/* インタビュー時の写真とコメント表示 */}
                         {answersWithPhotos && answersWithPhotos.length > 0 && (
                             <div style={styles.photosSection}>
                                 <h3 style={styles.photosSectionTitle}>📷 インタビュー時の写真とコメント</h3>
@@ -541,7 +508,7 @@ export default function TextCorrectionPage({
                                                 style={styles.removeButton}
                                                 title="削除"
                                             >
-                                                ✕
+                                                ✕ 削除
                                             </button>
                                             <div style={styles.photoLabel}>
                                                 {photo.filename}
@@ -582,7 +549,6 @@ export default function TextCorrectionPage({
                         </div>
                     </>
                 ) : (
-                    // 完了画面（編集可能）
                     <>
                         <h2 style={{ color: '#2c3e50', marginBottom: '15px', fontSize: '18px' }}>
                             ✏️ テキストを編集

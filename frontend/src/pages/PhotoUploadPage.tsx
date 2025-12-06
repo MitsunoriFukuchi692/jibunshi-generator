@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_URL } from '../config';
 
 interface UploadedPhoto {
   id?: number;
@@ -45,7 +46,7 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
         formData.append('userId', userId.toString());
         formData.append('description', photo.description);
 
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/photos`, {
+        const response = await fetch(`${API_URL}/api/photos`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`

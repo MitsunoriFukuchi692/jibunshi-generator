@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_URL } from '../config';
 
 interface CorrectedText {
   id: number;
@@ -22,7 +23,7 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
 
   const fetchCorrectedTexts = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
+      const apiUrl = API_URL;
       if (!apiUrl) throw new Error('API URLが設定されていません');
 
       console.log('📖 修正テキスト取得中...');
@@ -64,7 +65,7 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
     if (!selectedId) return;
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
+      const apiUrl = API_URL;
       if (!apiUrl) throw new Error('API URLが設定されていません');
 
       console.log('💾 修正内容を保存中...');

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_URL } from '../config';
 
 export default function UserPage({
   userId,
@@ -20,7 +21,7 @@ export default function UserPage({
     setLoading(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
+      const apiUrl = API_URL;
       if (!apiUrl) throw new Error('API URL not configured');
 
       const response = await fetch(`${apiUrl}/api/users/login`, {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_URL } from '../config';
 
 interface TurningPoint {
   id?: number;
@@ -93,7 +94,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
     setSaving(true);
     try {
       for (const tp of turningPoints) {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/timeline`, {
+        const response = await fetch(`${API_URL}/api/timeline`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import TextCorrectionPage from './TextCorrectionPage';
+import { API_URL } from '../config';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -125,7 +126,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
   // 写真一覧を取得（オプション機能 - 削除してもOK）
   const fetchPhotos = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
+      const apiUrl = API_URL;
       const response = await fetch(`${apiUrl}/api/photos`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -340,7 +341,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
 
   const saveConversation = async (finalConversation: Message[], finalAnswersWithPhotos: AnswerWithPhotos[]) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
+      const apiUrl = API_URL;
       if (!apiUrl) return;
 
       const responses = finalConversation
@@ -869,7 +870,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
                     onClick={() => addPhoto(photo)}
                   >
                     <img
-                      src={`${import.meta.env.VITE_API_URL}${photo.file_path}`}
+                      src={`${API_URL}${photo.file_path}`}
                       alt={photo.filename}
                       style={{ width: '100%', height: '100px', objectFit: 'cover' }}
                     />
