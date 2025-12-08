@@ -35,12 +35,6 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
   const [showPhotoSelector, setShowPhotoSelector] = useState(false);
   const [insertPosition, setInsertPosition] = useState<number | null>(null);
 
-  // PDF生成関連の状態
-  const [generatingPdf, setGeneratingPdf] = useState(false);
-  const [pdfGenerated, setPdfGenerated] = useState(false);
-  const [pdfDownloadUrl, setPdfDownloadUrl] = useState<string | null>(null);
-  const [pdfError, setPdfError] = useState<string | null>(null);
-
   useEffect(() => {
     fetchCorrectedTexts();
   }, []);
@@ -144,6 +138,7 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
     const insertPos = insertPosition ?? editContent.length;
 
     // 選択された写真をマークアップ形式で挿入
+    // フォーマット: [PHOTO:id:description]
     selectedPhotos.forEach(photo => {
       const photoMark = `\n[写真: ${photo.description || 'no description'} (ID: ${photo.id})]\n`;
       newContent = newContent.slice(0, insertPos) + photoMark + newContent.slice(insertPos);
@@ -194,51 +189,6 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
     }
   };
 
-  // PDF生成
-  const handleGeneratePdf = async () => {
-    try {
-      setGeneratingPdf(true);
-      setPdfError(null);
-      const apiUrl = API_URL;
-      if (!apiUrl) throw new Error('API URLが設定されていません');
-
-      console.log('📄 PDFを生成中...');
-
-      const response = await fetch(`${apiUrl}/api/pdf/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`PDF生成に失敗しました (${response.status})`);
-      }
-
-      const data = await response.json();
-      console.log('✅ PDF生成完了:', data);
-
-      if (data.success && data.downloadUrl) {
-        setPdfDownloadUrl(data.downloadUrl);
-        setPdfGenerated(true);
-      }
-    } catch (error) {
-      console.error('❌ PDF generation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'PDF生成に失敗しました';
-      setPdfError(errorMessage);
-    } finally {
-      setGeneratingPdf(false);
-    }
-  };
-
-  // PDFダウンロード
-  const handleDownloadPdf = () => {
-    if (pdfDownloadUrl) {
-      window.location.href = `${API_URL}${pdfDownloadUrl}`;
-    }
-  };
-
   const styles = {
     container: {
       maxWidth: '1000px',
@@ -268,14 +218,6 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
       borderRadius: '4px',
       marginBottom: '20px',
       borderLeft: '4px solid #c53030',
-    },
-    successBox: {
-      backgroundColor: '#e6ffed',
-      color: '#22863a',
-      padding: '15px',
-      borderRadius: '4px',
-      marginBottom: '20px',
-      borderLeft: '4px solid #28a745',
     },
     loadingBox: {
       textAlign: 'center' as const,
@@ -386,20 +328,6 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
       backgroundColor: '#3498db',
       color: 'white',
       marginTop: '10px',
-    },
-    pdfButton: {
-      backgroundColor: '#e74c3c',
-      color: 'white',
-      marginTop: '10px',
-    },
-    downloadButton: {
-      backgroundColor: '#27ae60',
-      color: 'white',
-      marginTop: '10px',
-    },
-    disabledButton: {
-      opacity: 0.6,
-      cursor: 'not-allowed',
     },
     // 写真セレクター用スタイル
     photoSelectorModal: {
@@ -608,44 +536,6 @@ export default function CorrectedTextPage({ userId, token }: { userId: number; t
           <strong>エラー:</strong> {error}
         </div>
       )}
-
-      {pdfGenerated && (
-        <div style={styles.successBox}>
-          <strong>✅ PDFが生成されました！</strong>
-          <button
-            onClick={handleDownloadPdf}
-            style={{
-              ...styles.button,
-              ...styles.downloadButton,
-              marginLeft: '10px',
-            }}
-          >
-            PDFをダウンロード
-          </button>
-        </div>
-      )}
-
-      {pdfError && (
-        <div style={styles.errorBox}>
-          <strong>PDF生成エラー:</strong> {pdfError}
-        </div>
-      )}
-
-      <div style={styles.listContainer}>
-        <div style={{ marginBottom: '20px' }}>
-          <button
-            onClick={handleGeneratePdf}
-            disabled={generatingPdf || correctedTexts.length === 0}
-            style={{
-              ...styles.button,
-              ...styles.pdfButton,
-              ...(generatingPdf || correctedTexts.length === 0 ? styles.disabledButton : {}),
-            }}
-          >
-            {generatingPdf ? '📄 PDF生成中...' : '📄 PDFを生成'}
-          </button>
-        </div>
-      </div>
 
       {loading ? (
         <div style={styles.loadingBox}>
