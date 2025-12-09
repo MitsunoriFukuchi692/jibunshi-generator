@@ -5,13 +5,15 @@ interface TurningPoint {
   id?: number;
   age: string;
   year: string;
+  month: string;
+  turning_point: string;
   event_title: string;
   event_description: string;
 }
 
 export default function TurningPointPage({ userId, token, birthDate, onComplete }: { userId: number; token: string | null; birthDate: string; onComplete: () => void }) {
   const [turningPoints, setTurningPoints] = useState<TurningPoint[]>([
-    { age: '', year: '', event_title: '', event_description: '' },
+    { age: '', year: '', month: '', turning_point: '', event_title: '', event_description: '' },
   ]);
   const [saving, setSaving] = useState(false);
   const [listeningIndex, setListeningIndex] = useState<{ field: string, index: number } | null>(null);
@@ -24,7 +26,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
     if (field === 'age' && value) {
       const age = parseInt(value);
       if (!isNaN(age) && age > 0 && birthDate) {
-        const birthYear = parseInt(birthDate.substring(0, 4)); // "1952-05-10" → 1952
+        const birthYear = parseInt(birthDate.substring(0, 4));
         const calculatedYear = birthYear + age;
         updated[index].year = calculatedYear.toString();
       }
@@ -33,7 +35,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
     setTurningPoints(updated);
   };
 
-  const startVoiceInput = (index: number, field: 'event_title' | 'event_description') => {
+  const startVoiceInput = (index: number, field: 'turning_point' | 'event_title' | 'event_description') => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
@@ -57,7 +59,9 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
       }
 
       const updated = [...turningPoints];
-      if (field === 'event_title') {
+      if (field === 'turning_point') {
+        updated[index].turning_point += transcript;
+      } else if (field === 'event_title') {
         updated[index].event_title += transcript;
       } else {
         updated[index].event_description += transcript;
@@ -77,7 +81,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
   const addTurningPoint = () => {
     setTurningPoints([
       ...turningPoints,
-      { age: '', year: '', event_title: '', event_description: '' },
+      { age: '', year: '', month: '', turning_point: '', event_title: '', event_description: '' },
     ]);
   };
 
@@ -104,6 +108,8 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
             user_id: userId,
             age: tp.age ? parseInt(tp.age) : null,
             year: tp.year ? parseInt(tp.year) : null,
+            month: tp.month ? parseInt(tp.month) : null,
+            turning_point: tp.turning_point || null,
             stage: 'turning_points',
             event_title: tp.event_title,
             event_description: tp.event_description,
@@ -116,7 +122,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
       }
 
       alert('ターニングポイントが保存されました！');
-      onComplete(); // 次のステップへ進む
+      onComplete();
     } catch (error) {
       console.error('保存エラー:', error);
       alert('保存に失敗しました');
@@ -192,7 +198,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
     },
     row: {
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
+      gridTemplateColumns: '1fr 1fr 1fr',
       gap: '10px',
       marginBottom: '12px',
     },
@@ -255,7 +261,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
       `}</style>
 
       <div style={styles.header}>
-        <h1 style={styles.title}>✍️ 人生のターニングポイント</h1>
+        <h1 style={styles.title}>✏️ 人生のターニングポイント</h1>
       </div>
 
       <div style={styles.info}>
@@ -288,6 +294,42 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                   style={{ ...styles.input, backgroundColor: '#ecf0f1', cursor: 'not-allowed' }}
                 />
               </div>
+              <div>
+                <label style={styles.label}>月</label>
+                <select
+                  value={tp.month}
+                  onChange={(e) => handleInputChange(index, 'month', e.target.value)}
+                  style={styles.input}
+                >
+                  <option value="">選択してください</option>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {i + 1}月
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <label style={styles.label}>ターニングポイント（タイトル）</label>
+            <div style={styles.inputWithButton}>
+              <input
+                type="text"
+                placeholder="例：結婚、転職、起業など"
+                value={tp.turning_point}
+                onChange={(e) => handleInputChange(index, 'turning_point', e.target.value)}
+                style={{ ...styles.input, marginBottom: 0, flex: 1 }}
+              />
+              <button
+                onClick={() => startVoiceInput(index, 'turning_point')}
+                style={{
+                  ...styles.button,
+                  ...styles.voiceButton,
+                  ...(listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
+                }}
+              >
+                🎤 {listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? '聴取中...' : '音声入力'}
+              </button>
             </div>
 
             <label style={styles.label}>イベント名 *</label>
@@ -307,7 +349,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                   ...(listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
                 }}
               >
-                🎤 {listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? '聞取中...' : '音声入力'}
+                🎤 {listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? '聴取中...' : '音声入力'}
               </button>
             </div>
 
@@ -329,7 +371,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                   ...(listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
                 }}
               >
-                🎤 {listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? '聞取中...' : '音声入力'}
+                🎤 {listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? '聴取中...' : '音声入力'}
               </button>
             </div>
             <div style={{ fontSize: '12px', color: '#7f8c8d' }}>

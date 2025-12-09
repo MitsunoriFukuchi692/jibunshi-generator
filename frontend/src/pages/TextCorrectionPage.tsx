@@ -15,6 +15,8 @@ interface SelectedPhoto {
 interface AnswerWithPhotos {
     text: string;
     photos: SelectedPhoto[];
+    year?: string;
+    month?: string;
 }
 
 interface UploadedPhoto {
@@ -45,8 +47,16 @@ export default function TextCorrectionPage({
     const [uploadedPhotos, setUploadedPhotos] = useState<UploadedPhoto[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
+    const [answersWithYearMonth, setAnswersWithYearMonth] = useState<AnswerWithPhotos[]>([]);
 
     useEffect(() => {
+        if (answersWithPhotos) {
+            setAnswersWithYearMonth(answersWithPhotos.map(answer => ({
+                ...answer,
+                year: answer.year || '',
+                month: answer.month || ''
+            })));
+        }
         correctText();
     }, []);
 
@@ -158,6 +168,12 @@ export default function TextCorrectionPage({
         setUploadedPhotos(uploadedPhotos.filter(photo => photo.id !== photoId));
     };
 
+    const handleYearMonthChange = (index: number, field: 'year' | 'month', value: string) => {
+        const updated = [...answersWithYearMonth];
+        updated[index] = { ...updated[index], [field]: value };
+        setAnswersWithYearMonth(updated);
+    };
+
     const handleSaveCompletion = async () => {
         setIsSaving(true);
 
@@ -165,6 +181,7 @@ export default function TextCorrectionPage({
         console.log('📤 API URL:', API_URL);
         console.log('👤 User ID:', userId);
         console.log('📸 Uploaded Photos:', uploadedPhotos);
+        console.log('📅 Answers with Year/Month:', answersWithYearMonth);
 
         try {
             const apiUrl = API_URL;
@@ -172,217 +189,234 @@ export default function TextCorrectionPage({
 
             console.log('💾 タイムラインにテキストを保存中...');
 
-            // 📸 アップロード済み写真を answersWithPhotos に統合
-            const photosToSave = answersWithPhotos ? [...answersWithPhotos] : [];
+            // ✅ C案実装：修正済みテキストを分割
+            const editedLines = editedText.split('\n\n').filter(line => line.trim());
+            
+            const photosToSave = answersWithYearMonth ? [...answersWithYearMonth] : [];
             if (uploadedPhotos.length > 0) {
-                // アップロード済み写真を最後に追加
                 photosToSave.push({
                     text: '',
                     photos: uploadedPhotos.map(photo => ({
                         id: photo.id,
                         file_path: photo.file_path,
                         description: photo.filename
-                    }))
+                    })),
+                    year: '',
+                    month: ''
                 });
             }
 
-            console.log('📦 Photos to save:', photosToSave);
-
-            // タイムラインに保存
-            const response = await fetch(`${apiUrl}/api/timeline`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
+            for (let i = 0; i < photosToSave.length; i++) {
+                const answer = photosToSave[i];
+                
+                // ✅ C案実装：修正済みテキストと元のテキストを両方保存
+                const originalText = answer.text || '';
+                const editedTextForThisAnswer = editedLines[i] || answer.text || '';
+                
+                const timelinePayload = {
                     user_id: userId,
+                    event_title: `インタビュー Q${i + 1}`,
+                    event_description: originalText,          // ✅ 元の回答を保存
+                    edited_content: editedTextForThisAnswer,  // ✅ 修正済みテキストを保存
+                    year: answer.year ? parseInt(answer.year) : null,
+                    month: answer.month ? parseInt(answer.month) : null,
                     stage: 'interview',
-                    event_title: 'インタビュー完了',
-                    event_description: editedText,
-                    edited_content: editedText,
-                    answersWithPhotos: photosToSave,
-                }),
-            });
+                    is_auto_generated: 1
+                };
 
-            if (!response.ok) {
-                const errorData = await response.text();
-                console.error('❌ Save error:', errorData);
-                throw new Error(`保存に失敗しました (${response.status})`);
-            }
+                console.log(`📝 Saving answer ${i + 1}:`, {
+                    ...timelinePayload,
+                    event_description: timelinePayload.event_description.substring(0, 50) + '...',
+                    edited_content: timelinePayload.edited_content.substring(0, 50) + '...'
+                });
 
-            const savedData = await response.json();
-            console.log('✅ Timeline saved:', savedData);
+                const timelineResponse = await fetch(`${apiUrl}/api/timeline`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(timelinePayload)
+                });
 
-            // ✨ PDF 生成処理
-            console.log('📄 PDF を生成中...');
-            const pdfResponse = await fetch(`${apiUrl}/api/pdf/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    userId: userId
-                }),
-            });
+                if (!timelineResponse.ok) {
+                    const errorText = await timelineResponse.text();
+                    console.error(`❌ Timeline save error for answer ${i + 1}:`, errorText);
+                    throw new Error(`回答 ${i + 1} の保存に失敗しました`);
+                }
 
-            if (!pdfResponse.ok) {
-                const pdfErrorData = await pdfResponse.text();
-                console.error('⚠️ PDF生成に失敗:', pdfErrorData);
-                console.warn('⚠️ PDF生成に失敗しましたが、テキストは保存されました');
-            } else {
-                const pdfData = await pdfResponse.json();
-                console.log('✅ PDF生成成功:', pdfData);
+                const timelineData = await timelineResponse.json();
+                const timelineId = timelineData.data?.id || timelineData.id;
+                console.log(`✅ Timeline saved - id: ${timelineId}`);
 
-                // PDF をダウンロード
-                if (pdfData.downloadUrl) {
-                    console.log('📥 PDFをダウンロード中...');
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = `${apiUrl}${pdfData.downloadUrl}`;
-                    downloadLink.download = pdfData.filename || 'jibunshi.pdf';
-                    document.body.appendChild(downloadLink);
-                    downloadLink.click();
-                    document.body.removeChild(downloadLink);
-                    console.log('✅ PDFダウンロード完了');
+                if (answer.photos && answer.photos.length > 0) {
+                    console.log(`📸 Linking ${answer.photos.length} photos to timeline ${timelineId}`);
+
+                    const photoData = answer.photos.map((photo, photoIdx) => ({
+                        file_path: photo.file_path,
+                        description: photo.description || `Photo ${photoIdx + 1}`,
+                        display_order: photoIdx
+                    }));
+
+                    const photoResponse = await fetch(`${apiUrl}/api/timeline/${timelineId}/photos`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ photoData })
+                    });
+
+                    if (!photoResponse.ok) {
+                        const errorText = await photoResponse.text();
+                        console.error(`❌ Photo link error:`, errorText);
+                        throw new Error(`写真の紐付けに失敗しました`);
+                    }
+
+                    console.log(`✅ Photos linked successfully`);
                 }
             }
 
-            // 完了処理
-            alert('✅ テキストを保存しました！');
+            console.log('✅ 全ての回答と写真が保存されました！');
             onComplete();
 
-        } catch (error) {
-            console.error('❌ Save error:', error);
-            const errorMessage = error instanceof Error ? error.message : '保存に失敗しました';
+        } catch (err) {
+            console.error('❌ Save error:', err);
+            const errorMessage = err instanceof Error ? err.message : '保存処理に失敗しました';
             alert(`エラー: ${errorMessage}`);
         } finally {
             setIsSaving(false);
         }
     };
 
-    const styles = {
+    const styles: { [key: string]: React.CSSProperties } = {
         container: {
             maxWidth: '900px',
             margin: '0 auto',
             padding: '20px',
-            boxSizing: 'border-box' as const,
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+        },
+        card: {
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '30px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
         },
         header: {
             textAlign: 'center' as const,
             marginBottom: '30px',
         },
         title: {
-            fontSize: 'clamp(20px, 5vw, 28px)',
-            fontWeight: 'bold' as const,
+            fontSize: '24px',
             color: '#2c3e50',
             marginBottom: '10px',
         },
-        subtitle: {
-            fontSize: '14px',
-            color: '#7f8c8d',
-            marginBottom: '20px',
-        },
-        card: {
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            padding: '30px',
-            marginBottom: '20px',
-        },
-        errorBox: {
-            backgroundColor: '#fdeaea',
-            color: '#c53030',
-            padding: '15px',
-            borderRadius: '4px',
-            marginBottom: '20px',
-            borderLeft: '4px solid #c53030',
-        },
-        loadingBox: {
-            textAlign: 'center' as const,
-            padding: '40px',
-            color: '#7f8c8d',
-        },
-        correctedTextBox: {
-            backgroundColor: '#ecf0f1',
-            padding: '20px',
-            borderRadius: '4px',
-            marginBottom: '20px',
-            maxHeight: '400px',
-            overflowY: 'auto' as const,
-            fontFamily: 'serif',
-            lineHeight: '1.8',
+        answerText: {
+            backgroundColor: '#f5f5f5',
+            border: '1px solid #ddd',
+            borderRadius: '6px',
+            padding: '12px',
             color: '#2c3e50',
-        },
-        editableTextarea: {
-            width: '100%',
-            minHeight: '400px',
-            padding: '15px',
             fontSize: '14px',
-            fontFamily: 'serif',
-            lineHeight: '1.8',
-            border: '1px solid #bdc3c7',
-            borderRadius: '4px',
-            boxSizing: 'border-box' as const,
-            marginBottom: '20px',
+            lineHeight: '1.6',
         },
         photosSection: {
-            marginBottom: '20px',
+            backgroundColor: '#f0f8ff',
+            border: '1px solid #b3d9ff',
+            borderRadius: '6px',
             padding: '15px',
-            backgroundColor: '#f8f9fa',
-            borderRadius: '4px',
+            marginBottom: '20px',
         },
         photosSectionTitle: {
-            fontSize: '16px',
-            fontWeight: 'bold' as const,
             color: '#2c3e50',
-            marginBottom: '15px',
-            marginTop: 0,
+            marginBottom: '12px',
+            fontSize: '16px',
         },
         photosContainer: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-            gap: '15px',
+            display: 'grid' as const,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+            gap: '12px',
             marginBottom: '15px',
         },
         photoCard: {
-            backgroundColor: 'white',
-            borderRadius: '8px',
+            position: 'relative' as const,
             overflow: 'hidden',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            transition: 'transform 0.3s ease',
+            borderRadius: '6px',
+            backgroundColor: '#fff',
+            border: '1px solid #ddd',
         },
         photoImage: {
             width: '100%',
-            height: '150px',
+            height: '120px',
             objectFit: 'cover' as const,
         },
+        removeButton: {
+            position: 'absolute' as const,
+            top: '4px',
+            right: '4px',
+            backgroundColor: 'rgba(255, 0, 0, 0.8)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '50%',
+            width: '24px',
+            height: '24px',
+            cursor: 'pointer',
+            fontSize: '16px',
+        },
         photoLabel: {
-            padding: '8px',
-            fontSize: '12px',
-            color: '#7f8c8d',
-            textAlign: 'center' as const,
-            borderTop: '1px solid #ecf0f1',
+            fontSize: '11px',
+            padding: '6px',
+            backgroundColor: '#f0f0f0',
+            color: '#666',
+            overflow: 'hidden' as const,
+            textOverflow: 'ellipsis' as const,
+            whiteSpace: 'nowrap' as const,
         },
-        answerWithPhotoBlock: {
-            marginBottom: '20px',
+        yearMonthSection: {
+            backgroundColor: '#fffacd',
+            border: '1px solid #f0e68c',
+            borderRadius: '6px',
             padding: '15px',
-            backgroundColor: 'white',
-            borderRadius: '4px',
-            border: '1px solid #ecf0f1',
+            marginBottom: '20px',
         },
-        answerText: {
+        yearMonthGrid: {
+            display: 'grid' as const,
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '10px',
+            marginBottom: '15px',
+        },
+        yearMonthInputGroup: {
+            display: 'flex' as const,
+            alignItems: 'center' as const,
+            gap: '8px',
+        },
+        yearInput: {
+            flex: 1,
+            padding: '8px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
             fontSize: '14px',
-            color: '#2c3e50',
-            lineHeight: '1.6',
-            marginBottom: '10px',
+        },
+        monthSelect: {
+            flex: 1,
+            padding: '8px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            fontSize: '14px',
+        },
+        buttonContainer: {
+            display: 'flex' as const,
+            gap: '12px',
+            justifyContent: 'center' as const,
+            marginTop: '25px',
         },
         button: {
-            padding: '12px 24px',
+            padding: '10px 20px',
             fontSize: '14px',
-            borderRadius: '4px',
-            cursor: 'pointer',
             border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer' as const,
+            fontWeight: 'bold' as const,
             transition: 'all 0.3s ease',
         },
         completeButton: {
@@ -397,39 +431,31 @@ export default function TextCorrectionPage({
             backgroundColor: '#95a5a6',
             color: 'white',
         },
-        buttonContainer: {
-            display: 'flex',
-            gap: '10px',
-            justifyContent: 'flex-end',
-            flexWrap: 'wrap' as const,
+        loadingSpinner: {
+            textAlign: 'center' as const,
+            padding: '30px',
+            color: '#7f8c8d',
         },
-        removeButton: {
-            backgroundColor: '#e74c3c',
-            color: 'white',
-            padding: '6px 12px',
-            fontSize: '12px',
-            borderRadius: '3px',
-            cursor: 'pointer',
-            border: 'none',
-            marginTop: '8px',
+        errorMessage: {
+            backgroundColor: '#f8d7da',
+            border: '1px solid #f5c6cb',
+            color: '#721c24',
+            padding: '15px',
+            borderRadius: '6px',
+            marginBottom: '20px',
         },
     };
 
     if (loading) {
         return (
             <div style={styles.container}>
-                <div style={styles.loadingBox}>
-                    <p>テキストを修正中...</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div style={styles.container}>
-                <div style={styles.errorBox}>
-                    <strong>エラー:</strong> {error}
+                <div style={styles.card}>
+                    <div style={styles.loadingSpinner}>
+                        <p>修正中...</p>
+                        <p style={{ fontSize: '12px', color: '#999', marginTop: '10px' }}>
+                            AIがあなたの回答を修正・整形しています
+                        </p>
+                    </div>
                 </div>
             </div>
         );
@@ -437,61 +463,97 @@ export default function TextCorrectionPage({
 
     return (
         <div style={styles.container}>
-            <div style={styles.header}>
-                <h1 style={styles.title}>✏️ 自分史の確認・編集</h1>
-                <p style={styles.subtitle}>AIが修正したテキストを確認して、必要に応じて編集できます</p>
-            </div>
-
             <div style={styles.card}>
+                <div style={styles.header}>
+                    <h1 style={styles.title}>✏️ 自動伝記の修正と確認</h1>
+                </div>
+
+                {error && (
+                    <div style={styles.errorMessage}>
+                        <strong>エラー:</strong> {error}
+                    </div>
+                )}
+
                 {stage === 'correction' ? (
                     <>
                         <h2 style={{ color: '#2c3e50', marginBottom: '15px', fontSize: '18px' }}>
-                            📖 修正済みテキスト
+                            📝 修正されたテキスト
                         </h2>
-                        <div style={styles.correctedTextBox}>
-                            {correctedText || 'テキストが読み込まれていません'}
+                        <div style={{
+                            ...styles.answerText,
+                            padding: '15px',
+                            minHeight: '150px',
+                            whiteSpace: 'pre-wrap' as const,
+                        }}>
+                            {editedText}
                         </div>
 
-                        {/* インタビュー時の写真とコメント表示 */}
-                        {answersWithPhotos && answersWithPhotos.length > 0 && (
-                            <div style={styles.photosSection}>
-                                <h3 style={styles.photosSectionTitle}>📷 インタビュー時の写真とコメント</h3>
-                                {answersWithPhotos.map((answer, idx) => (
-                                    <div key={idx} style={styles.answerWithPhotoBlock}>
-                                        <h4 style={{ color: '#3498db', marginBottom: '10px', fontSize: '14px' }}>
-                                            Q{idx + 1}の回答
-                                        </h4>
-                                        <div style={styles.answerText}>
-                                            {answer.text}
+                        {answersWithYearMonth && answersWithYearMonth.length > 0 && (
+                            <div style={styles.yearMonthSection}>
+                                <h3 style={styles.photosSectionTitle}>📅 各回答の年月を設定</h3>
+                                <div style={styles.yearMonthGrid}>
+                                    {answersWithYearMonth.map((answer, idx) => (
+                                        <div key={idx} style={styles.yearMonthInputGroup}>
+                                            <label style={{ fontSize: '12px', color: '#2c3e50', minWidth: '35px' }}>
+                                                Q{idx + 1}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="1900"
+                                                max={new Date().getFullYear()}
+                                                placeholder="年"
+                                                value={answer.year || ''}
+                                                onChange={(e) => handleYearMonthChange(idx, 'year', e.target.value)}
+                                                style={styles.yearInput}
+                                            />
+                                            <select
+                                                value={answer.month || ''}
+                                                onChange={(e) => handleYearMonthChange(idx, 'month', e.target.value)}
+                                                style={styles.monthSelect}
+                                            >
+                                                <option value="">月</option>
+                                                {Array.from({ length: 12 }, (_, i) => (
+                                                    <option key={i + 1} value={i + 1}>{i + 1}</option>
+                                                ))}
+                                            </select>
                                         </div>
+                                    ))}
+                                </div>
+                                <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
+                                    💡 年のみ、月のみ、または両方入力できます。どちらか一方でもOKです。
+                                </p>
+                            </div>
+                        )}
 
-                                        {answer.photos && answer.photos.length > 0 && (
-                                            <div>
-                                                <p style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '10px' }}>
-                                                    📎 関連写真 ({answer.photos.length}枚)
-                                                </p>
-                                                <div style={styles.photosContainer}>
-                                                    {answer.photos.map((photo) => (
-                                                        <div key={photo.id} style={styles.photoCard}>
-                                                            <img
-                                                                src={photo.file_path}
-                                                                alt="interview-photo"
-                                                                style={styles.photoImage}
-                                                            />
-                                                            <div style={styles.photoLabel}>
-                                                                {photo.description}
-                                                            </div>
+                        {answersWithYearMonth && answersWithYearMonth.some(a => a.photos && a.photos.length > 0) && (
+                            <div style={styles.photosSection}>
+                                <h3 style={styles.photosSectionTitle}>📷 インタビュー時の写真</h3>
+                                {answersWithYearMonth.map((answer, idx) => (
+                                    answer.photos && answer.photos.length > 0 && (
+                                        <div key={idx}>
+                                            <p style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '10px' }}>
+                                                Q{idx + 1}: {answer.photos.length}枚
+                                            </p>
+                                            <div style={styles.photosContainer}>
+                                                {answer.photos.map((photo) => (
+                                                    <div key={photo.id} style={styles.photoCard}>
+                                                        <img
+                                                            src={photo.file_path}
+                                                            alt="interview-photo"
+                                                            style={styles.photoImage}
+                                                        />
+                                                        <div style={styles.photoLabel}>
+                                                            {photo.description}
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )
                                 ))}
                             </div>
                         )}
 
-                        {/* アップロード済み写真表示 */}
                         {uploadedPhotos.length > 0 && (
                             <div style={styles.photosSection}>
                                 <h3 style={styles.photosSectionTitle}>📸 アップロード済み写真 ({uploadedPhotos.length}枚)</h3>
@@ -527,7 +589,7 @@ export default function TextCorrectionPage({
                                     ...styles.completeButton,
                                 }}
                             >
-                                確認・編集へ →
+                                確認・保存へ →
                             </button>
                             <label style={{
                                 ...styles.button,
@@ -551,55 +613,66 @@ export default function TextCorrectionPage({
                 ) : (
                     <>
                         <h2 style={{ color: '#2c3e50', marginBottom: '15px', fontSize: '18px' }}>
-                            ✏️ テキストを編集
+                            ✏️ 最終確認
                         </h2>
-                        <textarea
-                            value={editedText}
-                            onChange={(e) => setEditedText(e.target.value)}
-                            style={styles.editableTextarea}
-                            placeholder="必要に応じてテキストを編集してください..."
-                        />
+                        <h3 style={{ color: '#7f8c8d', marginBottom: '10px' }}>修正されたテキスト：</h3>
+                        <div style={{
+                            ...styles.answerText,
+                            padding: '15px',
+                            minHeight: '100px',
+                            whiteSpace: 'pre-wrap' as const,
+                        }}>
+                            {editedText}
+                        </div>
 
-                        {/* 写真とコメント表示 */}
-                        {answersWithPhotos && answersWithPhotos.length > 0 && (
+                        {answersWithYearMonth && answersWithYearMonth.length > 0 && (
                             <div style={styles.photosSection}>
-                                <h3 style={styles.photosSectionTitle}>📷 インタビュー時の写真とコメント</h3>
-                                {answersWithPhotos.map((answer, idx) => (
-                                    <div key={idx} style={styles.answerWithPhotoBlock}>
-                                        <h4 style={{ color: '#3498db', marginBottom: '10px', fontSize: '14px' }}>
-                                            Q{idx + 1}の回答
-                                        </h4>
-                                        <div style={styles.answerText}>
-                                            {answer.text}
+                                <h3 style={styles.photosSectionTitle}>📅 設定された年月</h3>
+                                {answersWithYearMonth.map((answer, idx) => {
+                                    const hasYearMonth = answer.year || answer.month;
+                                    if (!hasYearMonth) return null;
+                                    
+                                    return (
+                                        <div key={idx} style={{
+                                            backgroundColor: '#f0f8ff',
+                                            padding: '10px',
+                                            borderRadius: '4px',
+                                            marginBottom: '10px',
+                                            borderLeft: '3px solid #3498db'
+                                        }}>
+                                            <strong>Q{idx + 1}:</strong> {answer.year}年 {answer.month}月
                                         </div>
+                                    );
+                                })}
+                            </div>
+                        )}
 
-                                        {answer.photos && answer.photos.length > 0 && (
-                                            <div>
-                                                <p style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '10px' }}>
-                                                    📎 関連写真 ({answer.photos.length}枚)
-                                                </p>
-                                                <div style={styles.photosContainer}>
-                                                    {answer.photos.map((photo) => (
-                                                        <div key={photo.id} style={styles.photoCard}>
-                                                            <img
-                                                                src={photo.file_path}
-                                                                alt="interview-photo"
-                                                                style={styles.photoImage}
-                                                            />
-                                                            <div style={styles.photoLabel}>
-                                                                {photo.description}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                        {answersWithYearMonth && answersWithYearMonth.some(a => a.photos && a.photos.length > 0) && (
+                            <div style={styles.photosSection}>
+                                <h3 style={styles.photosSectionTitle}>📷 インタビュー時の写真</h3>
+                                {answersWithYearMonth.map((answer, idx) => (
+                                    answer.photos && answer.photos.length > 0 && (
+                                        <div key={idx}>
+                                            <p style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '10px' }}>
+                                                Q{idx + 1}: {answer.photos.length}枚
+                                            </p>
+                                            <div style={styles.photosContainer}>
+                                                {answer.photos.map((photo) => (
+                                                    <div key={photo.id} style={styles.photoCard}>
+                                                        <img
+                                                            src={photo.file_path}
+                                                            alt="interview-photo"
+                                                            style={styles.photoImage}
+                                                        />
+                                                    </div>
+                                                ))}
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )
                                 ))}
                             </div>
                         )}
 
-                        {/* アップロード済み写真表示 */}
                         {uploadedPhotos.length > 0 && (
                             <div style={styles.photosSection}>
                                 <h3 style={styles.photosSectionTitle}>📸 アップロード済み写真 ({uploadedPhotos.length}枚)</h3>
@@ -631,7 +704,7 @@ export default function TextCorrectionPage({
                                     cursor: isSaving ? 'not-allowed' : 'pointer',
                                 }}
                             >
-                                {isSaving ? '保存中...' : '保存して完了 ✓'}
+                                {isSaving ? '💾 保存中...' : '✅ 保存して完了'}
                             </button>
                             <button
                                 onClick={() => setStage('correction')}

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import TextCorrectionPage from './TextCorrectionPage';
 import { API_URL } from '../config';
 
 interface Message {
@@ -16,6 +15,8 @@ interface SelectedPhoto {
 interface AnswerWithPhotos {
   text: string;
   photos: SelectedPhoto[];
+  year?: string;
+  month?: string;
 }
 
 interface InterviewSession {
@@ -37,35 +38,35 @@ interface Photo {
 const INTERVIEW_QUESTIONS = [
   // 第1部：基本情報（生い立ち）
   "どこで、いつ生まれましたか？どんな環境で育ちましたか？",
-  
+
   // 第2部：学生時代
   "小中高大の学校名を教えてください。",
   "学生時代で最も印象に残っていることは何ですか？",
   "進路選択の時、どのように決めましたか？",
-  
+
   // 第3部：仕事・キャリア
   "初めての仕事について教えてください。",
   "仕事人生で最も大切な経験は何ですか？",
   "仕事でのやりがいや成功体験を聞かせてください。",
   "仕事での失敗や挫折経験、そこから学んだことは？",
-  
+
   // 第4部：家族・人間関係
   "家族や友人との関係について聞かせてください。",
   "趣味や好きなこと、人生で最も幸せを感じた時期は何ですか？",
-  
+
   // 第5部：健康・人生の転機
   "健康や病気について、人生に大きな影響を与えた出来事はありますか？",
-  
+
   // 第6部：人生の教訓
   "これまでの人生で学んだ大切な教訓は何ですか？",
   "今、大事にしていることは何ですか？",
-  
+
   // 第7部：メッセージ（複数対象）
   "次の世代（子ども・孫など）に伝えたいメッセージは何ですか？",
   "家族に伝えたいメッセージはありますか？",
   "友人に伝えたいメッセージはありますか？",
   "職場や会社に対して伝えたいメッセージはありますか？",
-  
+
   // 第8部：総括
   "人生を振り返ってどう感じていますか？",
   "これからの時間の中で、挑戦したいことはありますか？",
@@ -77,6 +78,8 @@ export default function InterviewPage({ userId, token }: { userId: number; token
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [currentAnswer, setCurrentAnswer] = useState<string>('');
   const [currentPhotos, setCurrentPhotos] = useState<SelectedPhoto[]>([]);
+  const [eventYear, setEventYear] = useState<string>('');
+  const [eventMonth, setEventMonth] = useState<string>('');
   const [availablePhotos, setAvailablePhotos] = useState<Photo[]>([]);
   const [listening, setListening] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -205,6 +208,8 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       setIsAnswering(true);
       setCurrentAnswer('');
       setCurrentPhotos([]);
+      setEventYear('');
+      setEventMonth('');
       saveSessionToLocalStorage();
     } catch (error) {
       console.error('❌ Interview error:', error);
@@ -281,23 +286,29 @@ export default function InterviewPage({ userId, token }: { userId: number; token
 
   const submitAnswer = async () => {
     if (!currentAnswer.trim()) {
-      alert('何か答えてください');
+      alert('答えを入力してください');
       return;
     }
 
-    const newConversation: Message[] = [
+    setProcessing(true);
+
+    const newAnswer: AnswerWithPhotos = {
+      text: currentAnswer,
+      photos: currentPhotos,
+      year: eventYear || undefined,
+      month: eventMonth || undefined,
+    };
+
+    const newAnswersWithPhotos = [...answersWithPhotos, newAnswer];
+    const newConversation = [
       ...conversation,
-      { role: 'user', content: currentAnswer },
-    ];
-    const newAnswersWithPhotos: AnswerWithPhotos[] = [
-      ...answersWithPhotos,
-      { text: currentAnswer, photos: currentPhotos },
+      { role: 'user', content: currentAnswer }
     ];
 
-    setConversation(newConversation);
-    setAnswersWithPhotos(newAnswersWithPhotos);
     setCurrentAnswer('');
     setCurrentPhotos([]);
+    setEventYear('');
+    setEventMonth('');
     setIsAnswering(false);
     setProcessing(true);
     setError(null);
@@ -318,6 +329,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
         const nextQuestion = INTERVIEW_QUESTIONS[nextIndex];
         setCurrentQuestionIndex(nextIndex);
         setConversation([...newConversation, { role: 'assistant', content: nextQuestion }]);
+        setAnswersWithPhotos(newAnswersWithPhotos);
         setIsAnswering(true);
         setUnsavedChanges(false);
         saveSessionToLocalStorage();
@@ -340,32 +352,40 @@ export default function InterviewPage({ userId, token }: { userId: number; token
   };
 
   const saveConversation = async (finalConversation: Message[], finalAnswersWithPhotos: AnswerWithPhotos[]) => {
-    try {
-      const apiUrl = API_URL;
-      if (!apiUrl) return;
+  try {
+    const apiUrl = API_URL;
+    console.log('💾 saveConversation called');
+    console.log('📊 answersWithPhotos:', finalAnswersWithPhotos);
+    
+    if (!apiUrl) return;
 
-      const responses = finalConversation
-        .filter((msg, idx) => idx % 2 === 1) // ユーザーの回答のみ
-        .map((msg) => msg.content);
+    const responses = finalConversation
+      .filter((msg, idx) => idx % 2 === 1)
+      .map((msg) => msg.content);
 
-      await fetch(`${apiUrl}/api/interview/save`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          conversation: finalConversation,
-          responses,
-          answersWithPhotos: finalAnswersWithPhotos,
-        }),
-      });
+    console.log('📤 Fetching to /api/interview/save...');
 
-    } catch (error) {
-      console.error('❌ 保存エラー:', error);
-    }
-  };
+    const res = await fetch(`${apiUrl}/api/interview/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        conversation: finalConversation,
+        responses,
+        answersWithPhotos: finalAnswersWithPhotos,
+      }),
+    });
+
+    const data = await res.json();
+    console.log('✅ Save success:', data);
+
+  } catch (error) {
+    console.error('❌ 保存エラー:', error);
+  }
+};
 
   const progress = (currentQuestionIndex / INTERVIEW_QUESTIONS.length) * 100;
 
@@ -399,7 +419,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       backgroundColor: '#ecf0f1',
       borderRadius: '4px',
       height: '20px',
-      marginBottom: '20px',
+      marginBottom: '10px',
       overflow: 'hidden',
     },
     progressFill: {
@@ -409,246 +429,276 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     },
     progressText: {
       fontSize: '12px',
-      color: '#2c3e50',
+      color: '#7f8c8d',
       marginBottom: '10px',
-      textAlign: 'center' as const,
-    },
-    errorBox: {
-      backgroundColor: '#fdeaea',
-      color: '#c53030',
-      padding: '15px',
-      borderRadius: '4px',
-      marginBottom: '20px',
-      borderLeft: '4px solid #c53030',
     },
     card: {
       backgroundColor: 'white',
-      padding: '30px',
       borderRadius: '8px',
+      padding: '20px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
       marginBottom: '20px',
-      boxSizing: 'border-box' as const,
     },
     conversationBox: {
-      backgroundColor: '#f8f9fa',
-      padding: '20px',
+      backgroundColor: '#f5f5f5',
       borderRadius: '8px',
-      maxHeight: '400px',
-      overflowY: 'auto' as const,
+      padding: '15px',
       marginBottom: '20px',
-      boxSizing: 'border-box' as const,
+      maxHeight: '300px',
+      overflowY: 'auto' as const,
     },
     message: {
-      marginBottom: '15px',
       padding: '10px',
+      marginBottom: '10px',
       borderRadius: '4px',
-      wordBreak: 'break-word' as const,
+      fontSize: '14px',
+      lineHeight: '1.5',
     },
     assistantMessage: {
-      backgroundColor: '#e8f4f8',
-      textAlign: 'left' as const,
+      backgroundColor: '#e3f2fd',
+      color: '#1565c0',
     },
     userMessage: {
-      backgroundColor: '#d5f4e6',
-      textAlign: 'right' as const,
-      marginLeft: '30%',
+      backgroundColor: '#f3e5f5',
+      color: '#6a1b9a',
     },
     questionBox: {
       backgroundColor: '#fff3cd',
-      padding: '20px',
-      borderRadius: '8px',
+      border: '1px solid #ffc107',
+      borderRadius: '4px',
+      padding: '15px',
       marginBottom: '20px',
       fontSize: '16px',
-      fontWeight: 'bold' as const,
       color: '#856404',
-      lineHeight: '1.6',
-      boxSizing: 'border-box' as const,
+      fontWeight: 'bold' as const,
     },
     textInputBox: {
-      backgroundColor: '#f0f0f0',
-      padding: '20px',
-      borderRadius: '8px',
       marginBottom: '20px',
-      boxSizing: 'border-box' as const,
     },
     textInputLabel: {
-      fontWeight: 'bold' as const,
-      marginBottom: '10px',
-      color: '#3498db',
       display: 'block',
+      marginBottom: '8px',
+      fontSize: '14px',
+      fontWeight: 'bold' as const,
+      color: '#2c3e50',
     },
     textarea: {
       width: '100%',
-      minHeight: '120px',
-      padding: '15px',
+      height: '120px',
+      padding: '12px',
       fontSize: '14px',
-      fontFamily: 'serif',
-      lineHeight: '1.6',
       border: '1px solid #bdc3c7',
       borderRadius: '4px',
+      fontFamily: 'inherit',
       boxSizing: 'border-box' as const,
+      marginBottom: '15px',
+    },
+    yearMonthContainer: {
+      display: 'flex',
+      gap: '10px',
+      marginBottom: '15px',
+    },
+    yearMonthInput: {
+      flex: 1,
+      padding: '10px',
+      fontSize: '14px',
+      border: '1px solid #bdc3c7',
+      borderRadius: '4px',
+      fontFamily: 'inherit',
+    },
+    yearMonthLabel: {
+      display: 'block',
+      marginBottom: '8px',
+      fontSize: '12px',
+      fontWeight: 'bold' as const,
       color: '#2c3e50',
     },
     photosContainer: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+      display: 'flex',
+      flexWrap: 'wrap' as const,
       gap: '10px',
-      marginBottom: '20px',
-      marginTop: '10px',
     },
     photoCard: {
       position: 'relative' as const,
+      width: '100px',
+      height: '100px',
       borderRadius: '4px',
       overflow: 'hidden',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      border: '1px solid #bdc3c7',
     },
     photoImage: {
       width: '100%',
-      height: '100px',
+      height: '100%',
       objectFit: 'cover' as const,
     },
     removePhotoButton: {
       position: 'absolute' as const,
-      top: '5px',
-      right: '5px',
-      backgroundColor: '#e74c3c',
+      top: '2px',
+      right: '2px',
+      backgroundColor: 'rgba(255,0,0,0.7)',
       color: 'white',
       border: 'none',
       borderRadius: '50%',
       width: '24px',
       height: '24px',
       cursor: 'pointer',
-      fontSize: '16px',
+      fontSize: '18px',
       padding: '0',
     },
     buttonContainer: {
       display: 'flex',
       gap: '10px',
-      marginBottom: '20px',
+      marginBottom: '15px',
       flexWrap: 'wrap' as const,
     },
     button: {
-      flex: 1,
-      padding: '12px',
+      padding: '12px 16px',
       fontSize: '14px',
+      fontWeight: 'bold' as const,
+      border: 'none',
       borderRadius: '4px',
       cursor: 'pointer',
-      border: 'none',
-      transition: 'all 0.3s ease',
-      minHeight: '44px',
+      transition: 'opacity 0.2s',
+    },
+    photoButton: {
+      backgroundColor: '#ff9800',
+      color: 'white',
+      flex: 1,
+      minWidth: '120px',
+    },
+    voiceButton: {
+      backgroundColor: '#2196f3',
+      color: 'white',
+      flex: 1,
+      minWidth: '120px',
+    },
+    submitButton: {
+      backgroundColor: '#4caf50',
+      color: 'white',
+      flex: 1,
       minWidth: '120px',
     },
     startButton: {
-      backgroundColor: '#27ae60',
-      color: 'white',
-    },
-    voiceButton: {
-      backgroundColor: '#3498db',
-      color: 'white',
-    },
-    submitButton: {
-      backgroundColor: '#27ae60',
-      color: 'white',
-      flex: 2,
-    },
-    photoButton: {
-      backgroundColor: '#9b59b6',
+      backgroundColor: '#4caf50',
       color: 'white',
     },
     pauseButton: {
-      backgroundColor: '#f39c12',
+      backgroundColor: '#ff9800',
       color: 'white',
     },
+    errorBox: {
+      backgroundColor: '#ffebee',
+      color: '#c62828',
+      padding: '12px',
+      borderRadius: '4px',
+      marginBottom: '15px',
+      fontSize: '14px',
+    },
     questionsList: {
-      backgroundColor: '#f8f9fa',
-      padding: '20px',
-      borderRadius: '8px',
-      maxHeight: '500px',
-      overflowY: 'auto' as const,
+      backgroundColor: '#f5f5f5',
+      borderRadius: '4px',
+      padding: '15px',
       marginBottom: '20px',
+      maxHeight: '300px',
+      overflowY: 'auto' as const,
     },
     questionItem: {
-      padding: '12px',
-      marginBottom: '10px',
       backgroundColor: 'white',
-      borderRadius: '4px',
+      padding: '10px',
+      marginBottom: '10px',
       borderLeft: '4px solid #3498db',
+      fontSize: '14px',
     },
     modal: {
       position: 'fixed' as const,
-      top: '0',
-      left: '0',
-      right: '0',
-      bottom: '0',
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
       display: 'flex',
-      justifyContent: 'center',
       alignItems: 'center',
+      justifyContent: 'center',
       zIndex: 1000,
     },
     modalContent: {
       backgroundColor: 'white',
-      padding: '30px',
       borderRadius: '8px',
+      padding: '20px',
       maxWidth: '600px',
       maxHeight: '80vh',
       overflowY: 'auto' as const,
-      boxSizing: 'border-box' as const,
     },
     modalTitle: {
-      fontSize: '20px',
+      fontSize: '18px',
       fontWeight: 'bold' as const,
-      marginBottom: '20px',
+      marginBottom: '15px',
       color: '#2c3e50',
     },
     photoGrid: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
       gap: '10px',
+      marginBottom: '15px',
     },
     photoGridItem: {
       cursor: 'pointer',
       borderRadius: '4px',
       overflow: 'hidden',
       border: '2px solid transparent',
-      transition: 'all 0.3s ease',
+      transition: 'border 0.2s',
     },
     photoGridItemHover: {
-      border: '2px solid #3498db',
+      borderColor: '#4caf50',
     },
   };
 
-  // 修正画面を表示中
   if (showCorrectionPage) {
     return (
-      <TextCorrectionPage
-        userId={userId}
-        token={token}
-        conversation={finalConversation}
-        answersWithPhotos={finalAnswersWithPhotos}
-        onComplete={() => {
-          alert('自動修正が完了しました！');
-          setShowCorrectionPage(false);
-          setIsStarted(false);
-          setCurrentQuestionIndex(0);
-          setConversation([]);
-          setAnswersWithPhotos([]);
-        }}
-      />
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <h2 style={{ fontSize: '20px', color: '#2c3e50', marginBottom: '20px' }}>
+            📝 インタビュー完了！
+          </h2>
+          <p style={{ color: '#7f8c8d', marginBottom: '20px' }}>
+            インタビューが完了しました。回答内容を確認してから、PDFを生成できます。
+          </p>
+          <button
+            onClick={() => window.location.hash = '#correction'}
+            style={{
+              ...styles.button,
+              ...styles.submitButton,
+              width: '100%',
+            }}
+          >
+            📖 テキスト確認・編集ページへ →
+          </button>
+        </div>
+      </div>
     );
   }
 
   return (
     <div style={styles.container}>
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-        
-        @media (max-width: 768px) {
-          [style*="marginLeft: '30%'"] {
-            margin-left: 10% !important;
+        @media (max-width: 600px) {
+          textarea {
+            font-size: 16px !important;
+          }
+          button {
+            flex: 1 !important;
+            min-width: 100px !important;
+          }
+          .button-container {
+            flex-direction: column !important;
+          }
+          .year-month-container {
+            flex-direction: column !important;
+          }
+          .year-month-container input,
+          .year-month-container select {
+            width: 100% !important;
+            margin-left: 0 !important;
           }
         }
       `}</style>
@@ -716,7 +766,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
               進捗: {currentQuestionIndex + 1} / {INTERVIEW_QUESTIONS.length}
             </div>
             <div style={styles.progressBar}>
-              <div style={{...styles.progressFill, width: `${progress}%`}}></div>
+              <div style={{ ...styles.progressFill, width: `${progress}%` }}></div>
             </div>
 
             {conversation.length > 0 && (
@@ -753,6 +803,43 @@ export default function InterviewPage({ userId, token }: { userId: number; token
                     placeholder="ここに答えを入力してください..."
                     style={styles.textarea}
                   />
+
+                  {/* 年月入力欄 */}
+                  <div>
+                    <label style={styles.textInputLabel}>📅 この出来事が起きた年月（オプション）</label>
+                    <div style={styles.yearMonthContainer}>
+                      <div style={{ flex: 1 }}>
+                        <label style={styles.yearMonthLabel}>年</label>
+                        <input
+                          type="number"
+                          placeholder="2020"
+                          min="1900"
+                          max={new Date().getFullYear()}
+                          value={eventYear}
+                          onChange={(e) => {
+                            setEventYear(e.target.value);
+                            setUnsavedChanges(true);
+                          }}
+                          style={styles.yearMonthInput}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={styles.yearMonthLabel}>月</label>
+                        <input
+                          type="number"
+                          placeholder="1"
+                          min="1"
+                          max="12"
+                          value={eventMonth}
+                          onChange={(e) => {
+                            setEventMonth(e.target.value);
+                            setUnsavedChanges(true);
+                          }}
+                          style={styles.yearMonthInput}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
                   {/* 写真表示 */}
                   {currentPhotos.length > 0 && (
