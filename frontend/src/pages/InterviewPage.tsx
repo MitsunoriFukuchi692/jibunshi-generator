@@ -241,373 +241,325 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     };
 
     recognition.onresult = (event: any) => {
-      let transcript = '';
+      let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          setCurrentAnswer((prev) => prev + transcript);
+          setUnsavedChanges(true);
+        } else {
+          interimTranscript += transcript;
+        }
       }
-
-      console.log('📝 Transcript:', transcript);
-      setListening(false);
-
-      const updatedAnswer = currentAnswer
-        ? currentAnswer + '。' + transcript
-        : transcript;
-      setCurrentAnswer(updatedAnswer);
-      setUnsavedChanges(true);
     };
 
     recognition.onerror = (event: any) => {
-      setListening(false);
       console.error('❌ 音声認識エラー:', event.error);
-      alert(`音声認識エラー: ${event.error}`);
+      setError(`音声認識エラー: ${event.error}`);
+      setListening(false);
+    };
+
+    recognition.onend = () => {
+      console.log('🎤 音声認識終了');
+      setListening(false);
     };
 
     recognition.start();
   };
 
+  const removePhoto = (photoId: number) => {
+    setCurrentPhotos((prev) => prev.filter((photo) => photo.id !== photoId));
+    setUnsavedChanges(true);
+  };
+
   const addPhoto = (photo: Photo) => {
-    const selectedPhoto: SelectedPhoto = {
+    const newPhoto: SelectedPhoto = {
       id: photo.id,
       file_path: photo.file_path,
       description: photo.description,
     };
-
-    if (!currentPhotos.find(p => p.id === photo.id)) {
-      setCurrentPhotos([...currentPhotos, selectedPhoto]);
-      setUnsavedChanges(true);
-    }
-    setShowPhotoModal(false);
-  };
-
-  const removePhoto = (photoId: number) => {
-    setCurrentPhotos(currentPhotos.filter(p => p.id !== photoId));
+    setCurrentPhotos((prev) => {
+      const exists = prev.find((p) => p.id === photo.id);
+      if (exists) {
+        return prev.filter((p) => p.id !== photo.id);
+      }
+      return [...prev, newPhoto];
+    });
     setUnsavedChanges(true);
   };
 
   const submitAnswer = async () => {
     if (!currentAnswer.trim()) {
-      alert('答えを入力してください');
+      alert('回答を入力してください');
       return;
     }
 
     setProcessing(true);
-
-    const newAnswer: AnswerWithPhotos = {
-      text: currentAnswer,
-      photos: currentPhotos,
-      year: eventYear || undefined,
-      month: eventMonth || undefined,
-    };
-
-    const newAnswersWithPhotos = [...answersWithPhotos, newAnswer];
-    const newConversation = [
-      ...conversation,
-      { role: 'user', content: currentAnswer }
-    ];
-
-    setCurrentAnswer('');
-    setCurrentPhotos([]);
-    setEventYear('');
-    setEventMonth('');
-    setIsAnswering(false);
-    setProcessing(true);
     setError(null);
 
     try {
-      // 次の質問を取得
-      const nextIndex = currentQuestionIndex + 1;
+      const answerWithPhoto: AnswerWithPhotos = {
+        text: currentAnswer,
+        photos: currentPhotos,
+        year: eventYear || undefined,
+        month: eventMonth || undefined,
+      };
 
-      if (nextIndex >= INTERVIEW_QUESTIONS.length) {
-        // インタビュー完了
-        await saveConversation(newConversation, newAnswersWithPhotos);
-        setFinalConversation(newConversation);
-        setFinalAnswersWithPhotos(newAnswersWithPhotos);
-        setShowCorrectionPage(true);
-        localStorage.removeItem(`interview_session_${userId}`);
-      } else {
-        // 次の質問を表示
-        const nextQuestion = INTERVIEW_QUESTIONS[nextIndex];
-        setCurrentQuestionIndex(nextIndex);
-        setConversation([...newConversation, { role: 'assistant', content: nextQuestion }]);
-        setAnswersWithPhotos(newAnswersWithPhotos);
-        setIsAnswering(true);
+      setAnswersWithPhotos((prev) => [...prev, answerWithPhoto]);
+      setConversation((prev) => [
+        ...prev,
+        { role: 'user', content: currentAnswer },
+      ]);
+
+      // 次の質問へ
+      if (currentQuestionIndex < INTERVIEW_QUESTIONS.length - 1) {
+        setCurrentQuestionIndex((prev) => prev + 1);
+        const nextQuestion = INTERVIEW_QUESTIONS[currentQuestionIndex + 1];
+        setConversation((prev) => [
+          ...prev,
+          { role: 'assistant', content: nextQuestion },
+        ]);
+        setCurrentAnswer('');
+        setCurrentPhotos([]);
+        setEventYear('');
+        setEventMonth('');
         setUnsavedChanges(false);
-        saveSessionToLocalStorage();
+      } else {
+        // インタビュー完了
+        setIsAnswering(false);
+        setShowCorrectionPage(true);
+        setFinalConversation([...conversation, { role: 'user', content: currentAnswer }]);
+        setFinalAnswersWithPhotos([...answersWithPhotos, answerWithPhoto]);
       }
-      setError(null);
+
+      saveSessionToLocalStorage();
     } catch (error) {
-      console.error('❌ Error:', error);
-      const errorMessage = error instanceof Error ? error.message : '質問の生成に失敗しました';
+      console.error('❌ 回答送信エラー:', error);
+      const errorMessage = error instanceof Error ? error.message : '回答の送信に失敗しました';
       setError(errorMessage);
       alert(`エラー: ${errorMessage}`);
-      setIsAnswering(true);
     } finally {
       setProcessing(false);
     }
   };
 
-  const saveAndPause = async () => {
+  const saveAndPause = () => {
     saveSessionToLocalStorage();
-    alert('進捗を保存しました。後で続きから再開できます。');
+    alert('進捗を保存しました。後で続けられます。');
+    setUnsavedChanges(false);
   };
 
-  const saveConversation = async (finalConversation: Message[], finalAnswersWithPhotos: AnswerWithPhotos[]) => {
-  try {
-    const apiUrl = API_URL;
-    console.log('💾 saveConversation called');
-    console.log('📊 answersWithPhotos:', finalAnswersWithPhotos);
-    
-    if (!apiUrl) return;
+  const progress = ((currentQuestionIndex + 1) / INTERVIEW_QUESTIONS.length) * 100;
 
-    const responses = finalConversation
-      .filter((msg, idx) => idx % 2 === 1)
-      .map((msg) => msg.content);
-
-    console.log('📤 Fetching to /api/interview/save...');
-
-    const res = await fetch(`${apiUrl}/api/interview/save`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        conversation: finalConversation,
-        responses,
-        answersWithPhotos: finalAnswersWithPhotos,
-      }),
-    });
-
-    const data = await res.json();
-    console.log('✅ Save success:', data);
-
-  } catch (error) {
-    console.error('❌ 保存エラー:', error);
-  }
-};
-
-  const progress = (currentQuestionIndex / INTERVIEW_QUESTIONS.length) * 100;
-
-  const styles = {
+  const styles: { [key: string]: React.CSSProperties } = {
     container: {
-      maxWidth: '800px',
+      maxWidth: '900px',
       margin: '0 auto',
       padding: '20px',
-      boxSizing: 'border-box' as const,
-    },
-    header: {
-      textAlign: 'center' as const,
-      marginBottom: '30px',
+      fontFamily: 'Arial, sans-serif',
+      backgroundColor: '#f9f9f9',
+      borderRadius: '8px',
     },
     title: {
-      fontSize: 'clamp(20px, 5vw, 28px)',
-      fontWeight: 'bold' as const,
-      color: '#2c3e50',
-      marginBottom: '10px',
-    },
-    info: {
-      backgroundColor: '#e8f4f8',
-      padding: '15px',
-      borderRadius: '4px',
-      fontSize: '14px',
-      color: '#2c3e50',
+      fontSize: '28px',
+      fontWeight: 'bold',
       marginBottom: '20px',
+      color: '#2c3e50',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+    },
+    infoBox: {
+      backgroundColor: '#e3f2fd',
+      padding: '15px',
+      borderRadius: '8px',
+      marginBottom: '20px',
+      color: '#1565c0',
       lineHeight: '1.6',
     },
-    progressBar: {
-      backgroundColor: '#ecf0f1',
-      borderRadius: '4px',
-      height: '20px',
+    progressText: {
+      fontSize: '16px',
+      fontWeight: 'bold',
       marginBottom: '10px',
+      color: '#2c3e50',
+    },
+    progressBar: {
+      width: '100%',
+      height: '8px',
+      backgroundColor: '#ddd',
+      borderRadius: '4px',
       overflow: 'hidden',
+      marginBottom: '20px',
     },
     progressFill: {
-      backgroundColor: '#3498db',
       height: '100%',
+      backgroundColor: '#4caf50',
       transition: 'width 0.3s ease',
     },
-    progressText: {
-      fontSize: '12px',
-      color: '#7f8c8d',
-      marginBottom: '10px',
-    },
-    card: {
-      backgroundColor: 'white',
-      borderRadius: '8px',
-      padding: '20px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-      marginBottom: '20px',
-    },
     conversationBox: {
-      backgroundColor: '#f5f5f5',
-      borderRadius: '8px',
-      padding: '15px',
       marginBottom: '20px',
       maxHeight: '300px',
-      overflowY: 'auto' as const,
+      overflowY: 'auto',
+      backgroundColor: '#fff',
+      padding: '15px',
+      borderRadius: '8px',
+      border: '1px solid #ddd',
     },
     message: {
+      marginBottom: '12px',
       padding: '10px',
-      marginBottom: '10px',
-      borderRadius: '4px',
-      fontSize: '14px',
+      borderRadius: '6px',
       lineHeight: '1.5',
     },
     assistantMessage: {
       backgroundColor: '#e3f2fd',
       color: '#1565c0',
+      marginRight: '20px',
     },
     userMessage: {
-      backgroundColor: '#f3e5f5',
-      color: '#6a1b9a',
+      backgroundColor: '#fff9c4',
+      color: '#f57f17',
+      marginLeft: '20px',
     },
     questionBox: {
-      backgroundColor: '#fff3cd',
-      border: '1px solid #ffc107',
-      borderRadius: '4px',
+      backgroundColor: '#fffde7',
       padding: '15px',
+      borderRadius: '8px',
       marginBottom: '20px',
       fontSize: '16px',
-      color: '#856404',
-      fontWeight: 'bold' as const,
+      fontWeight: 'bold',
+      color: '#2c3e50',
+      borderLeft: '4px solid #ffd54f',
     },
     textInputBox: {
+      backgroundColor: '#f5f5f5',
+      padding: '15px',
+      borderRadius: '8px',
       marginBottom: '20px',
     },
     textInputLabel: {
       display: 'block',
-      marginBottom: '8px',
-      fontSize: '14px',
-      fontWeight: 'bold' as const,
+      fontWeight: 'bold',
+      marginBottom: '10px',
       color: '#2c3e50',
+      fontSize: '14px',
     },
     textarea: {
       width: '100%',
-      height: '120px',
       padding: '12px',
+      borderRadius: '6px',
+      border: '1px solid #bbb',
       fontSize: '14px',
-      border: '1px solid #bdc3c7',
-      borderRadius: '4px',
-      fontFamily: 'inherit',
+      fontFamily: 'Arial, sans-serif',
+      minHeight: '120px',
       boxSizing: 'border-box' as const,
-      marginBottom: '15px',
     },
     yearMonthContainer: {
       display: 'flex',
-      gap: '10px',
+      gap: '15px',
       marginBottom: '15px',
-    },
-    yearMonthInput: {
-      flex: 1,
-      padding: '10px',
-      fontSize: '14px',
-      border: '1px solid #bdc3c7',
-      borderRadius: '4px',
-      fontFamily: 'inherit',
     },
     yearMonthLabel: {
       display: 'block',
-      marginBottom: '8px',
-      fontSize: '12px',
-      fontWeight: 'bold' as const,
+      fontWeight: 'bold',
+      marginBottom: '5px',
       color: '#2c3e50',
+      fontSize: '13px',
+    },
+    yearMonthInput: {
+      width: '100%',
+      padding: '8px',
+      borderRadius: '4px',
+      border: '1px solid #bbb',
+      fontSize: '13px',
+      boxSizing: 'border-box' as const,
+    },
+    button: {
+      padding: '12px 20px',
+      fontSize: '14px',
+      fontWeight: 'bold',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      transition: 'background-color 0.3s',
+    },
+    startButton: {
+      backgroundColor: '#2196f3',
+      color: 'white',
+      margin: '10px auto',
+      display: 'block',
+    },
+    submitButton: {
+      backgroundColor: '#4caf50',
+      color: 'white',
+      flex: 1,
+    },
+    photoButton: {
+      backgroundColor: '#9c27b0',
+      color: 'white',
+      flex: 1,
+    },
+    voiceButton: {
+      backgroundColor: '#2196f3',
+      color: 'white',
+      flex: 1,
+    },
+    pauseButton: {
+      backgroundColor: '#ff9800',
+      color: 'white',
+    },
+    buttonContainer: {
+      display: 'flex',
+      gap: '10px',
+      marginBottom: '15px',
     },
     photosContainer: {
-      display: 'flex',
-      flexWrap: 'wrap' as const,
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
       gap: '10px',
+      marginTop: '10px',
     },
     photoCard: {
-      position: 'relative' as const,
-      width: '100px',
-      height: '100px',
-      borderRadius: '4px',
+      position: 'relative',
+      borderRadius: '6px',
       overflow: 'hidden',
-      border: '1px solid #bdc3c7',
+      backgroundColor: '#f0f0f0',
     },
     photoImage: {
       width: '100%',
-      height: '100%',
+      height: '100px',
       objectFit: 'cover' as const,
     },
     removePhotoButton: {
-      position: 'absolute' as const,
-      top: '2px',
-      right: '2px',
-      backgroundColor: 'rgba(255,0,0,0.7)',
+      position: 'absolute',
+      top: '5px',
+      right: '5px',
+      backgroundColor: 'rgba(255, 0, 0, 0.7)',
       color: 'white',
       border: 'none',
       borderRadius: '50%',
       width: '24px',
       height: '24px',
       cursor: 'pointer',
-      fontSize: '18px',
-      padding: '0',
+      fontSize: '16px',
+      fontWeight: 'bold',
     },
-    buttonContainer: {
-      display: 'flex',
-      gap: '10px',
-      marginBottom: '15px',
-      flexWrap: 'wrap' as const,
-    },
-    button: {
-      padding: '12px 16px',
-      fontSize: '14px',
-      fontWeight: 'bold' as const,
-      border: 'none',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      transition: 'opacity 0.2s',
-    },
-    photoButton: {
-      backgroundColor: '#ff9800',
-      color: 'white',
-      flex: 1,
-      minWidth: '120px',
-    },
-    voiceButton: {
-      backgroundColor: '#2196f3',
-      color: 'white',
-      flex: 1,
-      minWidth: '120px',
-    },
-    submitButton: {
-      backgroundColor: '#4caf50',
-      color: 'white',
-      flex: 1,
-      minWidth: '120px',
-    },
-    startButton: {
-      backgroundColor: '#4caf50',
-      color: 'white',
-    },
-    pauseButton: {
-      backgroundColor: '#ff9800',
-      color: 'white',
-    },
-    errorBox: {
-      backgroundColor: '#ffebee',
-      color: '#c62828',
-      padding: '12px',
-      borderRadius: '4px',
-      marginBottom: '15px',
-      fontSize: '14px',
-    },
-    questionsList: {
-      backgroundColor: '#f5f5f5',
-      borderRadius: '4px',
+    questionsListBox: {
+      backgroundColor: '#fff',
       padding: '15px',
+      borderRadius: '8px',
       marginBottom: '20px',
       maxHeight: '300px',
       overflowY: 'auto' as const,
+      border: '1px solid #ddd',
     },
     questionItem: {
-      backgroundColor: 'white',
       padding: '10px',
-      marginBottom: '10px',
-      borderLeft: '4px solid #3498db',
-      fontSize: '14px',
+      marginBottom: '8px',
+      backgroundColor: '#f9f9f9',
+      borderRadius: '6px',
+      borderLeft: '4px solid #2196f3',
+      color: '#2c3e50',
     },
     modal: {
       position: 'fixed' as const,
@@ -615,130 +567,90 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
       display: 'flex',
-      alignItems: 'center',
       justifyContent: 'center',
+      alignItems: 'center',
       zIndex: 1000,
     },
     modalContent: {
       backgroundColor: 'white',
-      borderRadius: '8px',
       padding: '20px',
-      maxWidth: '600px',
+      borderRadius: '8px',
       maxHeight: '80vh',
       overflowY: 'auto' as const,
+      maxWidth: '600px',
+      width: '90%',
     },
     modalTitle: {
       fontSize: '18px',
-      fontWeight: 'bold' as const,
+      fontWeight: 'bold',
       marginBottom: '15px',
       color: '#2c3e50',
     },
     photoGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
       gap: '10px',
       marginBottom: '15px',
     },
     photoGridItem: {
-      cursor: 'pointer',
-      borderRadius: '4px',
+      borderRadius: '6px',
       overflow: 'hidden',
+      cursor: 'pointer',
       border: '2px solid transparent',
-      transition: 'border 0.2s',
+      transition: 'all 0.3s',
     },
     photoGridItemHover: {
-      borderColor: '#4caf50',
+      borderColor: '#2196f3',
+      boxShadow: '0 0 8px rgba(33, 150, 243, 0.5)',
     },
   };
 
   if (showCorrectionPage) {
     return (
       <div style={styles.container}>
-        <div style={styles.card}>
-          <h2 style={{ fontSize: '20px', color: '#2c3e50', marginBottom: '20px' }}>
-            📝 インタビュー完了！
-          </h2>
-          <p style={{ color: '#7f8c8d', marginBottom: '20px' }}>
-            インタビューが完了しました。回答内容を確認してから、PDFを生成できます。
-          </p>
-          <button
-            onClick={() => window.location.hash = '#correction'}
-            style={{
-              ...styles.button,
-              ...styles.submitButton,
-              width: '100%',
-            }}
-          >
-            📖 テキスト確認・編集ページへ →
-          </button>
-        </div>
+        <CorrectedTextPage
+          conversation={finalConversation}
+          answersWithPhotos={finalAnswersWithPhotos}
+          userId={userId}
+          token={token}
+          onBack={() => {
+            setShowCorrectionPage(false);
+            setIsStarted(false);
+            setConversation([]);
+            setAnswersWithPhotos([]);
+            setCurrentQuestionIndex(0);
+          }}
+        />
       </div>
     );
   }
 
   return (
     <div style={styles.container}>
-      <style>{`
-        @media (max-width: 600px) {
-          textarea {
-            font-size: 16px !important;
-          }
-          button {
-            flex: 1 !important;
-            min-width: 100px !important;
-          }
-          .button-container {
-            flex-direction: column !important;
-          }
-          .year-month-container {
-            flex-direction: column !important;
-          }
-          .year-month-container input,
-          .year-month-container select {
-            width: 100% !important;
-            margin-left: 0 !important;
-          }
-        }
-      `}</style>
+      <h1 style={styles.title}>🔍 自分史インタビュー</h1>
 
-      <div style={styles.header}>
-        <h1 style={styles.title}>🎤 自分史インタビュー</h1>
+      <div style={styles.infoBox}>
+        AIがあなたに質問していきます。自由にお答えください。マイクボタンで音声入力ができます。言い足りなければ、もう一度マイクボタンを押して追加できます。PCからも写真を直接選んで追加することができます。
       </div>
 
-      <div style={styles.info}>
-        AIがあなたに質問していきます。自由にお答えください。マイクボタンで音声入力できます。言い足りなければ、もう一度マイクボタンを押して追加できます。PCから写真を直接選んで追加することもできます。
-      </div>
-
-      {error && (
-        <div style={styles.errorBox}>
-          <strong>エラー:</strong> {error}
-        </div>
-      )}
-
-      <div style={styles.card}>
+      <div style={styles.container}>
         {!isStarted ? (
-          <div style={{ textAlign: 'center' as const }}>
-            <p style={{ fontSize: '16px', color: '#2c3e50', marginBottom: '20px' }}>
-              インタビューを開始する準備はできていますか？
-            </p>
+          <div>
             <button
               onClick={() => setShowQuestionsList(!showQuestionsList)}
               style={{
                 ...styles.button,
-                backgroundColor: '#9b59b6',
-                color: 'white',
+                ...styles.startButton,
                 width: '200px',
-                marginBottom: '20px',
               }}
             >
-              📋 質問一覧を確認
+              {showQuestionsList ? '質問リストを隠す' : '質問リストを表示'}
             </button>
 
             {showQuestionsList && (
-              <div style={styles.questionsList}>
-                <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>全{INTERVIEW_QUESTIONS.length}の質問</h3>
+              <div style={styles.questionsListBox}>
                 {INTERVIEW_QUESTIONS.map((q, idx) => (
                   <div key={idx} style={styles.questionItem}>
                     <strong>Q{idx + 1}:</strong> {q}
@@ -980,6 +892,92 @@ export default function InterviewPage({ userId, token }: { userId: number; token
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// CorrectedTextPage コンポーネント（簡略版）
+function CorrectedTextPage({
+  conversation,
+  answersWithPhotos,
+  userId,
+  token,
+  onBack,
+}: {
+  conversation: Message[];
+  answersWithPhotos: AnswerWithPhotos[];
+  userId: number;
+  token: string | null;
+  onBack: () => void;
+}) {
+  const [processing, setProcessing] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    setProcessing(true);
+    try {
+      const response = await fetch(`${API_URL}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userId,
+          conversation,
+          answersWithPhotos,
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'jibunshi.pdf';
+        a.click();
+      } else {
+        alert('PDFの生成に失敗しました');
+      }
+    } catch (error) {
+      console.error('❌ PDF生成エラー:', error);
+      alert('PDFの生成中にエラーが発生しました');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div style={{ textAlign: 'center', padding: '20px' }}>
+      <h2>インタビュー完了！</h2>
+      <p>あなたの自分史が完成しました。</p>
+      <button
+        onClick={handleDownloadPDF}
+        disabled={processing}
+        style={{
+          padding: '12px 24px',
+          backgroundColor: '#4caf50',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          marginRight: '10px',
+        }}
+      >
+        {processing ? 'PDF生成中...' : 'PDFをダウンロード'}
+      </button>
+      <button
+        onClick={onBack}
+        style={{
+          padding: '12px 24px',
+          backgroundColor: '#2196f3',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: 'pointer',
+        }}
+      >
+        新規インタビュー
+      </button>
     </div>
   );
 }
