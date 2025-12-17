@@ -17,6 +17,7 @@ interface AnswerWithPhotos {
   photos: SelectedPhoto[];
   year?: string;
   month?: string;
+  isImportant?: boolean;  // ✅ 新: 重要な出来事かどうか
 }
 
 interface InterviewSession {
@@ -34,7 +35,7 @@ interface Photo {
   uploaded_at: string;
 }
 
-// 新しい質問リスト（21個）
+// 質問リスト（21個）
 const INTERVIEW_QUESTIONS = [
   // 第1部：基本情報（生い立ち）
   "どこで、いつ生まれましたか？どんな環境で育ちましたか？",
@@ -72,7 +73,19 @@ const INTERVIEW_QUESTIONS = [
   "これからの時間の中で、挑戦したいことはありますか？",
 ];
 
-export default function InterviewPage({ userId, token }: { userId: number; token: string | null }) {
+export default function InterviewPage({ 
+  userId, 
+  token,
+  userInfo,
+  onCorrectionStart,
+  onAIGenerationStart
+}: { 
+  userId: number; 
+  token: string | null;
+  userInfo?: { name: string; age: number };
+  onCorrectionStart?: (conversation: Message[], answersWithPhotos: AnswerWithPhotos[]) => void;
+  onAIGenerationStart?: (answersWithPhotos: AnswerWithPhotos[]) => void;
+}) {
   const [conversation, setConversation] = useState<Message[]>([]);
   const [answersWithPhotos, setAnswersWithPhotos] = useState<AnswerWithPhotos[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
@@ -80,6 +93,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
   const [currentPhotos, setCurrentPhotos] = useState<SelectedPhoto[]>([]);
   const [eventYear, setEventYear] = useState<string>('');
   const [eventMonth, setEventMonth] = useState<string>('');
+  const [isImportantEvent, setIsImportantEvent] = useState(false);  // ✅ 新: 重要な出来事フラグ
   const [availablePhotos, setAvailablePhotos] = useState<Photo[]>([]);
   const [listening, setListening] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -126,7 +140,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     }
   };
 
-  // 写真一覧を取得（オプション機能 - 削除してもOK）
+  // 写真一覧を取得
   const fetchPhotos = async () => {
     try {
       const apiUrl = API_URL;
@@ -166,7 +180,6 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       }
     }
 
-    // 写真を取得（今後の拡張機能用）
     fetchPhotos();
   }, [userId, token]);
 
@@ -190,6 +203,8 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     };
     localStorage.setItem(`interview_session_${userId}`, JSON.stringify(session));
     console.log('✅ セッション保存完了');
+    console.log('📊 保存されたanswersWithPhotos数:', answersWithPhotos.length);
+    console.log('📸 最後の回答の写真数:', answersWithPhotos[answersWithPhotos.length - 1]?.photos.length || 0);
   };
 
   const getCurrentQuestion = (): string => {
@@ -213,7 +228,7 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       saveSessionToLocalStorage();
     } catch (error) {
       console.error('❌ Interview error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'インタビューの開始に失敗しました';
+      const errorMessage = error instanceof Error ? error.message : '聞き取りの開始に失敗しました';
       setError(errorMessage);
       alert(`エラー: ${errorMessage}`);
       setIsStarted(false);
@@ -226,388 +241,350 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert('お使いのブラウザは音声入力に対応していません');
+      alert('お使いのブラウザはマイク入力に対応していません');
       return;
     }
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'ja-JP';
+    
+    // ✅ 修正: 複数の音声を継続的に認識
+    recognition.continuous = true;   // 複数の音声を認識
+    recognition.interimResults = true;  // 途中結果も取得
 
     setListening(true);
-    setError(null);
 
     recognition.onstart = () => {
-      console.log('🎤 音声認識開始...');
+      console.log('🎤 マイク開始 - continuous mode');
     };
 
     recognition.onresult = (event: any) => {
       let transcript = '';
+      
+      // ✅ 修正: isFinal=true（確定した結果）のみを処理
+      // これにより、音声認識中の揺らぎを防ぎ、確定した部分だけを追加
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
+        if (event.results[i].isFinal) {  // ← ここが重要: 確定結果のみ
+          transcript += event.results[i][0].transcript;
+        }
       }
 
-      console.log('📝 Transcript:', transcript);
-      setListening(false);
-
-      const updatedAnswer = currentAnswer
-        ? currentAnswer + '。' + transcript
-        : transcript;
-      setCurrentAnswer(updatedAnswer);
-      setUnsavedChanges(true);
+      if (transcript) {
+        console.log('📝 Transcript (final):', transcript);
+        
+        // ✅ 修正: setCurrentAnswer で前のテキストを保持
+        setCurrentAnswer((prev) => {
+          if (prev && prev.trim() !== '') {
+            // 前のテキストがあれば、改行で連結
+            // （日本語はスペース不要）
+            return prev + '\n' + transcript;
+          } else {
+            return transcript;
+          }
+        });
+        setUnsavedChanges(true);
+      }
     };
 
     recognition.onerror = (event: any) => {
+      console.error('❌ マイク認識エラー:', event.error);
+      if (event.error !== 'no-speech') {
+        alert(`マイク認識エラー: ${event.error}`);
+      }
       setListening(false);
-      console.error('❌ 音声認識エラー:', event.error);
-      alert(`音声認識エラー: ${event.error}`);
+    };
+
+    recognition.onend = () => {
+      console.log('✅ マイク終了');
+      setListening(false);
     };
 
     recognition.start();
   };
 
-  const addPhoto = (photo: Photo) => {
-    const selectedPhoto: SelectedPhoto = {
-      id: photo.id,
-      file_path: photo.file_path,
-      description: photo.description,
-    };
-
-    if (!currentPhotos.find(p => p.id === photo.id)) {
-      setCurrentPhotos([...currentPhotos, selectedPhoto]);
-      setUnsavedChanges(true);
-    }
-    setShowPhotoModal(false);
-  };
 
   const removePhoto = (photoId: number) => {
-    setCurrentPhotos(currentPhotos.filter(p => p.id !== photoId));
+    setCurrentPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    setUnsavedChanges(true);
+  };
+
+  const addPhoto = (photo: Photo) => {
+    const alreadyExists = currentPhotos.find((p) => p.id === photo.id);
+    if (alreadyExists) {
+      setCurrentPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+    } else {
+      const newPhoto: SelectedPhoto = {
+        id: photo.id,
+        file_path: photo.file_path,
+        description: photo.description || '',
+      };
+      setCurrentPhotos((prev) => [...prev, newPhoto]);
+    }
     setUnsavedChanges(true);
   };
 
   const submitAnswer = async () => {
     if (!currentAnswer.trim()) {
-      alert('答えを入力してください');
+      alert('回答を入力してください');
+      return;
+    }
+
+    // ✅ 重要な出来事の場合、年月入力チェック
+    if (isImportantEvent && !eventYear.trim()) {
+      alert('重要な出来事の場合は、少なくとも年を入力してください');
       return;
     }
 
     setProcessing(true);
-
-    const newAnswer: AnswerWithPhotos = {
-      text: currentAnswer,
-      photos: currentPhotos,
-      year: eventYear || undefined,
-      month: eventMonth || undefined,
-    };
-
-    const newAnswersWithPhotos = [...answersWithPhotos, newAnswer];
-    const newConversation = [
-      ...conversation,
-      { role: 'user', content: currentAnswer }
-    ];
-
-    setCurrentAnswer('');
-    setCurrentPhotos([]);
-    setEventYear('');
-    setEventMonth('');
-    setIsAnswering(false);
-    setProcessing(true);
     setError(null);
 
     try {
-      // 次の質問を取得
-      const nextIndex = currentQuestionIndex + 1;
+      // ✅ 重要な出来事の場合だけ年月を記録、そうでなければ記録しない
+      const newAnswerWithPhotos: AnswerWithPhotos = {
+        text: currentAnswer,
+        photos: currentPhotos,
+        year: isImportantEvent ? (eventYear || undefined) : undefined,
+        month: isImportantEvent ? (eventMonth || undefined) : undefined,
+        isImportant: isImportantEvent,  // ✅ 重要フラグを記録
+      };
 
-      if (nextIndex >= INTERVIEW_QUESTIONS.length) {
-        // インタビュー完了
-        await saveConversation(newConversation, newAnswersWithPhotos);
-        setFinalConversation(newConversation);
-        setFinalAnswersWithPhotos(newAnswersWithPhotos);
-        setShowCorrectionPage(true);
-        localStorage.removeItem(`interview_session_${userId}`);
-      } else {
-        // 次の質問を表示
-        const nextQuestion = INTERVIEW_QUESTIONS[nextIndex];
-        setCurrentQuestionIndex(nextIndex);
-        setConversation([...newConversation, { role: 'assistant', content: nextQuestion }]);
-        setAnswersWithPhotos(newAnswersWithPhotos);
-        setIsAnswering(true);
+      const newAnswersWithPhotos = [...answersWithPhotos, newAnswerWithPhotos];
+      setAnswersWithPhotos(newAnswersWithPhotos);
+
+      console.log('📝 回答を保存:', {
+        questionIndex: currentQuestionIndex,
+        isImportant: isImportantEvent,
+        year: newAnswerWithPhotos.year,
+        month: newAnswerWithPhotos.month,
+      });
+
+      // 会話に追加
+      const newConversation = [...conversation, { role: 'user', content: currentAnswer }];
+
+      // 次の質問があるか確認
+      if (currentQuestionIndex < INTERVIEW_QUESTIONS.length - 1) {
+        const nextQuestion = INTERVIEW_QUESTIONS[currentQuestionIndex + 1];
+        newConversation.push({ role: 'assistant', content: nextQuestion });
+        setConversation(newConversation);
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+        setCurrentAnswer('');
+        setCurrentPhotos([]);
+        setEventYear('');
+        setEventMonth('');
+        setIsImportantEvent(false);  // ✅ 重要フラグをリセット
         setUnsavedChanges(false);
         saveSessionToLocalStorage();
+      } else {
+        // インタビュー完了
+        setConversation(newConversation);
+        setFinalConversation(newConversation);
+        setFinalAnswersWithPhotos(newAnswersWithPhotos);
+        setIsAnswering(false);
+        localStorage.removeItem(`interview_session_${userId}`);
       }
-      setError(null);
     } catch (error) {
-      console.error('❌ Error:', error);
-      const errorMessage = error instanceof Error ? error.message : '質問の生成に失敗しました';
+      console.error('❌ 回答送信エラー:', error);
+      const errorMessage = error instanceof Error ? error.message : '回答送信に失敗しました';
       setError(errorMessage);
       alert(`エラー: ${errorMessage}`);
-      setIsAnswering(true);
     } finally {
       setProcessing(false);
     }
   };
 
-  const saveAndPause = async () => {
+  const saveAndPause = () => {
     saveSessionToLocalStorage();
-    alert('進捗を保存しました。後で続きから再開できます。');
+    alert('進捗を保存しました。後で再開できます。');
+    setUnsavedChanges(false);
   };
 
-  const saveConversation = async (finalConversation: Message[], finalAnswersWithPhotos: AnswerWithPhotos[]) => {
-  try {
-    const apiUrl = API_URL;
-    console.log('💾 saveConversation called');
-    console.log('📊 answersWithPhotos:', finalAnswersWithPhotos);
-    
-    if (!apiUrl) return;
-
-    const responses = finalConversation
-      .filter((msg, idx) => idx % 2 === 1)
-      .map((msg) => msg.content);
-
-    console.log('📤 Fetching to /api/interview/save...');
-
-    const res = await fetch(`${apiUrl}/api/interview/save`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        conversation: finalConversation,
-        responses,
-        answersWithPhotos: finalAnswersWithPhotos,
-      }),
-    });
-
-    const data = await res.json();
-    console.log('✅ Save success:', data);
-
-  } catch (error) {
-    console.error('❌ 保存エラー:', error);
-  }
-};
-
-  const progress = (currentQuestionIndex / INTERVIEW_QUESTIONS.length) * 100;
+  const progress =
+    INTERVIEW_QUESTIONS.length > 0 ? ((currentQuestionIndex + 1) / INTERVIEW_QUESTIONS.length) * 100 : 0;
 
   const styles = {
     container: {
-      maxWidth: '800px',
-      margin: '0 auto',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: '100vh',
+      backgroundColor: '#f9f7f4',
       padding: '20px',
-      boxSizing: 'border-box' as const,
-    },
-    header: {
-      textAlign: 'center' as const,
-      marginBottom: '30px',
-    },
-    title: {
-      fontSize: 'clamp(20px, 5vw, 28px)',
-      fontWeight: 'bold' as const,
-      color: '#2c3e50',
-      marginBottom: '10px',
-    },
-    info: {
-      backgroundColor: '#e8f4f8',
-      padding: '15px',
-      borderRadius: '4px',
-      fontSize: '14px',
-      color: '#2c3e50',
-      marginBottom: '20px',
-      lineHeight: '1.6',
-    },
-    progressBar: {
-      backgroundColor: '#ecf0f1',
-      borderRadius: '4px',
-      height: '20px',
-      marginBottom: '10px',
-      overflow: 'hidden',
-    },
-    progressFill: {
-      backgroundColor: '#3498db',
-      height: '100%',
-      transition: 'width 0.3s ease',
-    },
-    progressText: {
-      fontSize: '12px',
-      color: '#7f8c8d',
-      marginBottom: '10px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif',
     },
     card: {
       backgroundColor: 'white',
+      padding: '40px',
       borderRadius: '8px',
-      padding: '20px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+      boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
+      width: '100%',
+      maxWidth: '800px',
+    },
+    title: {
+      fontSize: '28px',
+      fontWeight: 'bold',
+      color: '#2c3e50',
+      marginBottom: '30px',
+      textAlign: 'center' as const,
+    },
+    progressText: {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#2c3e50',
+      marginBottom: '15px',
+    },
+    progressBar: {
+      width: '100%',
+      height: '16px',
+      backgroundColor: '#ecf0f1',
+      borderRadius: '8px',
+      overflow: 'hidden',
       marginBottom: '20px',
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: '#3498db',
+      transition: 'width 0.3s ease',
     },
     conversationBox: {
-      backgroundColor: '#f5f5f5',
-      borderRadius: '8px',
-      padding: '15px',
-      marginBottom: '20px',
-      maxHeight: '300px',
+      marginBottom: '30px',
+      maxHeight: '400px',
       overflowY: 'auto' as const,
+      paddingBottom: '20px',
+      borderBottom: '2px solid #ecf0f1',
     },
     message: {
-      padding: '10px',
-      marginBottom: '10px',
-      borderRadius: '4px',
-      fontSize: '14px',
-      lineHeight: '1.5',
+      marginBottom: '15px',
+      padding: '15px',
+      borderRadius: '8px',
+      fontSize: '16px',
+      lineHeight: '1.6',
     },
     assistantMessage: {
-      backgroundColor: '#e3f2fd',
-      color: '#1565c0',
+      backgroundColor: '#ecf0f1',
+      color: '#2c3e50',
     },
     userMessage: {
-      backgroundColor: '#f3e5f5',
-      color: '#6a1b9a',
+      backgroundColor: '#3498db',
+      color: 'white',
+      marginLeft: '40px',
     },
     questionBox: {
-      backgroundColor: '#fff3cd',
-      border: '1px solid #ffc107',
-      borderRadius: '4px',
-      padding: '15px',
+      backgroundColor: '#fff9e6',
+      padding: '20px',
+      borderRadius: '8px',
       marginBottom: '20px',
-      fontSize: '16px',
-      color: '#856404',
-      fontWeight: 'bold' as const,
+      fontSize: '18px',
+      fontWeight: '600',
+      color: '#2c3e50',
+      lineHeight: '1.8',
     },
     textInputBox: {
       marginBottom: '20px',
     },
     textInputLabel: {
       display: 'block',
-      marginBottom: '8px',
-      fontSize: '14px',
-      fontWeight: 'bold' as const,
+      fontSize: '16px',
+      fontWeight: '600',
       color: '#2c3e50',
+      marginBottom: '10px',
     },
     textarea: {
       width: '100%',
-      height: '120px',
+      minHeight: '120px',
       padding: '12px',
-      fontSize: '14px',
-      border: '1px solid #bdc3c7',
-      borderRadius: '4px',
+      fontSize: '16px',
+      border: '2px solid #bdc3c7',
+      borderRadius: '8px',
       fontFamily: 'inherit',
-      boxSizing: 'border-box' as const,
       marginBottom: '15px',
     },
     yearMonthContainer: {
       display: 'flex',
-      gap: '10px',
-      marginBottom: '15px',
-    },
-    yearMonthInput: {
-      flex: 1,
-      padding: '10px',
-      fontSize: '14px',
-      border: '1px solid #bdc3c7',
-      borderRadius: '4px',
-      fontFamily: 'inherit',
+      gap: '15px',
+      marginBottom: '20px',
     },
     yearMonthLabel: {
       display: 'block',
-      marginBottom: '8px',
-      fontSize: '12px',
-      fontWeight: 'bold' as const,
+      fontSize: '14px',
+      fontWeight: '600',
       color: '#2c3e50',
+      marginBottom: '8px',
+    },
+    yearMonthInput: {
+      width: '100%',
+      padding: '10px',
+      fontSize: '16px',
+      border: '2px solid #bdc3c7',
+      borderRadius: '8px',
+    },
+    buttonContainer: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '12px',
+      marginBottom: '20px',
+    },
+    button: {
+      padding: '14px 24px',
+      fontSize: '16px',
+      fontWeight: '600',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease',
+      minHeight: '48px',
+    },
+    photoButton: {
+      backgroundColor: '#9b59b6',
+      color: 'white',
+    },
+    voiceButton: {
+      backgroundColor: '#e74c3c',
+      color: 'white',
+    },
+    submitButton: {
+      backgroundColor: '#27ae60',
+      color: 'white',
+    },
+    pauseButton: {
+      backgroundColor: '#f39c12',
+      color: 'white',
+      fontWeight: '600',
+    },
+    startButton: {
+      backgroundColor: '#27ae60',
+      color: 'white',
     },
     photosContainer: {
-      display: 'flex',
-      flexWrap: 'wrap' as const,
-      gap: '10px',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+      gap: '12px',
+      marginTop: '15px',
     },
     photoCard: {
       position: 'relative' as const,
-      width: '100px',
-      height: '100px',
-      borderRadius: '4px',
+      borderRadius: '8px',
       overflow: 'hidden',
-      border: '1px solid #bdc3c7',
+      border: '2px solid #bdc3c7',
     },
     photoImage: {
       width: '100%',
-      height: '100%',
+      height: '100px',
       objectFit: 'cover' as const,
     },
     removePhotoButton: {
       position: 'absolute' as const,
-      top: '2px',
-      right: '2px',
-      backgroundColor: 'rgba(255,0,0,0.7)',
+      top: '5px',
+      right: '5px',
+      width: '30px',
+      height: '30px',
+      padding: '0',
+      backgroundColor: '#e74c3c',
       color: 'white',
       border: 'none',
       borderRadius: '50%',
-      width: '24px',
-      height: '24px',
       cursor: 'pointer',
       fontSize: '18px',
-      padding: '0',
-    },
-    buttonContainer: {
-      display: 'flex',
-      gap: '10px',
-      marginBottom: '15px',
-      flexWrap: 'wrap' as const,
-    },
-    button: {
-      padding: '12px 16px',
-      fontSize: '14px',
-      fontWeight: 'bold' as const,
-      border: 'none',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      transition: 'opacity 0.2s',
-    },
-    photoButton: {
-      backgroundColor: '#ff9800',
-      color: 'white',
-      flex: 1,
-      minWidth: '120px',
-    },
-    voiceButton: {
-      backgroundColor: '#2196f3',
-      color: 'white',
-      flex: 1,
-      minWidth: '120px',
-    },
-    submitButton: {
-      backgroundColor: '#4caf50',
-      color: 'white',
-      flex: 1,
-      minWidth: '120px',
-    },
-    startButton: {
-      backgroundColor: '#4caf50',
-      color: 'white',
-    },
-    pauseButton: {
-      backgroundColor: '#ff9800',
-      color: 'white',
-    },
-    errorBox: {
-      backgroundColor: '#ffebee',
-      color: '#c62828',
-      padding: '12px',
-      borderRadius: '4px',
-      marginBottom: '15px',
-      fontSize: '14px',
-    },
-    questionsList: {
-      backgroundColor: '#f5f5f5',
-      borderRadius: '4px',
-      padding: '15px',
-      marginBottom: '20px',
-      maxHeight: '300px',
-      overflowY: 'auto' as const,
-    },
-    questionItem: {
-      backgroundColor: 'white',
-      padding: '10px',
-      marginBottom: '10px',
-      borderLeft: '4px solid #3498db',
-      fontSize: '14px',
+      fontWeight: 'bold',
     },
     modal: {
       position: 'fixed' as const,
@@ -615,41 +592,58 @@ export default function InterviewPage({ userId, token }: { userId: number; token
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
       display: 'flex',
-      alignItems: 'center',
       justifyContent: 'center',
+      alignItems: 'center',
       zIndex: 1000,
     },
     modalContent: {
       backgroundColor: 'white',
-      borderRadius: '8px',
-      padding: '20px',
-      maxWidth: '600px',
+      padding: '30px',
+      borderRadius: '12px',
+      maxWidth: '700px',
       maxHeight: '80vh',
       overflowY: 'auto' as const,
     },
     modalTitle: {
-      fontSize: '18px',
-      fontWeight: 'bold' as const,
-      marginBottom: '15px',
+      fontSize: '20px',
+      fontWeight: 'bold',
       color: '#2c3e50',
+      marginBottom: '20px',
     },
     photoGrid: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-      gap: '10px',
-      marginBottom: '15px',
+      gap: '12px',
+      marginBottom: '20px',
     },
     photoGridItem: {
       cursor: 'pointer',
-      borderRadius: '4px',
+      borderRadius: '8px',
       overflow: 'hidden',
-      border: '2px solid transparent',
-      transition: 'border 0.2s',
+      border: '2px solid #bdc3c7',
+      transition: 'all 0.3s ease',
     },
     photoGridItemHover: {
-      borderColor: '#4caf50',
+      border: '3px solid #27ae60',
+      boxShadow: '0 0 8px rgba(39, 174, 96, 0.5)',
+    },
+    questionsList: {
+      backgroundColor: '#f5f5f5',
+      padding: '15px',
+      borderRadius: '8px',
+      marginBottom: '20px',
+      maxHeight: '400px',
+      overflowY: 'auto' as const,
+    },
+    questionItem: {
+      padding: '12px',
+      marginBottom: '10px',
+      backgroundColor: 'white',
+      borderLeft: '4px solid #3498db',
+      fontSize: '15px',
+      lineHeight: '1.6',
     },
   };
 
@@ -657,88 +651,122 @@ export default function InterviewPage({ userId, token }: { userId: number; token
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <h2 style={{ fontSize: '20px', color: '#2c3e50', marginBottom: '20px' }}>
-            📝 インタビュー完了！
-          </h2>
-          <p style={{ color: '#7f8c8d', marginBottom: '20px' }}>
-            インタビューが完了しました。回答内容を確認してから、PDFを生成できます。
+          <div style={styles.title}>聞き取り完了しました</div>
+          <p style={{ fontSize: '16px', marginBottom: '20px', textAlign: 'center', color: '#7f8c8d' }}>
+            内容を確認してから、修正ページに進みます。
           </p>
           <button
-            onClick={() => window.location.hash = '#correction'}
+            onClick={() => {
+              setShowCorrectionPage(false);
+              if (onCorrectionStart) {
+                onCorrectionStart(finalConversation, finalAnswersWithPhotos);
+              }
+            }}
             style={{
               ...styles.button,
-              ...styles.submitButton,
+              ...styles.startButton,
               width: '100%',
             }}
           >
-            📖 テキスト確認・編集ページへ →
+            修正ページへ進む
           </button>
         </div>
       </div>
     );
   }
 
-  return (
-    <div style={styles.container}>
-      <style>{`
-        @media (max-width: 600px) {
-          textarea {
-            font-size: 16px !important;
-          }
-          button {
-            flex: 1 !important;
-            min-width: 100px !important;
-          }
-          .button-container {
-            flex-direction: column !important;
-          }
-          .year-month-container {
-            flex-direction: column !important;
-          }
-          .year-month-container input,
-          .year-month-container select {
-            width: 100% !important;
-            margin-left: 0 !important;
-          }
-        }
-      `}</style>
-
-      <div style={styles.header}>
-        <h1 style={styles.title}>🎤 自分史インタビュー</h1>
-      </div>
-
-      <div style={styles.info}>
-        AIがあなたに質問していきます。自由にお答えください。マイクボタンで音声入力できます。言い足りなければ、もう一度マイクボタンを押して追加できます。PCから写真を直接選んで追加することもできます。
-      </div>
-
-      {error && (
-        <div style={styles.errorBox}>
-          <strong>エラー:</strong> {error}
-        </div>
-      )}
-
-      <div style={styles.card}>
-        {!isStarted ? (
-          <div style={{ textAlign: 'center' as const }}>
-            <p style={{ fontSize: '16px', color: '#2c3e50', marginBottom: '20px' }}>
-              インタビューを開始する準備はできていますか？
+  if (!isAnswering && isStarted) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={styles.title}>聞き取り完了しました 🎉</div>
+          <div style={{ marginBottom: '30px', fontSize: '16px', lineHeight: '1.8' }}>
+            <p style={{ marginBottom: '15px' }}>
+              <strong>作成者情報:</strong> {userInfo?.name || '未設定'} （{userInfo?.age || '未設定'}歳）
             </p>
+            <p style={{ marginBottom: '15px' }}>
+              <strong>質問数:</strong> {INTERVIEW_QUESTIONS.length}問中 {currentQuestionIndex}問完了
+            </p>
+            <p>
+              <strong>回答数:</strong> {answersWithPhotos.length}個の回答を記録しました
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              if (onAIGenerationStart) {
+                onAIGenerationStart(finalAnswersWithPhotos || answersWithPhotos);
+              }
+            }}
+            style={{
+              ...styles.button,
+              ...styles.startButton,
+              width: '100%',
+              marginBottom: '12px',
+            }}
+          >
+            AI作成を開始する
+          </button>
+
+          <button
+            onClick={() => {
+              if (onCorrectionStart) {
+                onCorrectionStart(finalConversation, finalAnswersWithPhotos);
+              }
+            }}
+            style={{
+              ...styles.button,
+              backgroundColor: '#3498db',
+              color: 'white',
+              width: '100%',
+            }}
+          >
+            修正ページへ進む
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isStarted) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={styles.title}>人生記録</div>
+          <p style={{ fontSize: '18px', textAlign: 'center', marginBottom: '30px', color: '#7f8c8d', lineHeight: '1.8' }}>
+            こんにちは。今日は、あなたの人生のお話を聞かせていただきたいと思います。
+          </p>
+
+          <div style={{ marginBottom: '30px', fontSize: '16px', color: '#34495e', lineHeight: '1.8' }}>
+            <p style={{ marginBottom: '15px' }}>
+              <strong>作成者:</strong> {userInfo?.name || '未設定'}
+            </p>
+            <p>
+              <strong>年齢:</strong> {userInfo?.age || '未設定'}歳
+            </p>
+          </div>
+
+          {error && (
+            <div style={{ backgroundColor: '#ffebee', color: '#c62828', padding: '15px', borderRadius: '8px', marginBottom: '20px', fontSize: '15px' }}>
+              エラー: {error}
+            </div>
+          )}
+
             <button
               onClick={() => setShowQuestionsList(!showQuestionsList)}
               style={{
                 ...styles.button,
-                backgroundColor: '#9b59b6',
+                backgroundColor: '#95a5a6',
                 color: 'white',
-                width: '200px',
                 marginBottom: '20px',
+                width: '100%',
               }}
             >
-              📋 質問一覧を確認
+              {showQuestionsList ? '質問リストを非表示' : '質問リストを表示'}
             </button>
 
             {showQuestionsList && (
               <div style={styles.questionsList}>
-                <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>全{INTERVIEW_QUESTIONS.length}の質問</h3>
                 {INTERVIEW_QUESTIONS.map((q, idx) => (
                   <div key={idx} style={styles.questionItem}>
                     <strong>Q{idx + 1}:</strong> {q}
@@ -753,197 +781,239 @@ export default function InterviewPage({ userId, token }: { userId: number; token
               style={{
                 ...styles.button,
                 ...styles.startButton,
-                width: '200px',
+                width: '100%',
                 opacity: processing ? 0.6 : 1,
+                fontSize: '18px',
               }}
             >
-              {processing ? 'インタビュー開始中...' : 'インタビューを開始'}
+              {processing ? '聞き取り開始中...' : '聞き取りを開始'}
             </button>
           </div>
-        ) : (
-          <>
-            <div style={styles.progressText}>
-              進捗: {currentQuestionIndex + 1} / {INTERVIEW_QUESTIONS.length}
-            </div>
-            <div style={styles.progressBar}>
-              <div style={{ ...styles.progressFill, width: `${progress}%` }}></div>
-            </div>
+        </div>
+      );
+    }
 
-            {conversation.length > 0 && (
-              <div style={styles.conversationBox}>
-                {conversation.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      ...styles.message,
-                      ...(msg.role === 'assistant' ? styles.assistantMessage : styles.userMessage),
-                    }}
-                  >
-                    <strong>{msg.role === 'assistant' ? 'AI: ' : 'あなた: '}</strong>
-                    {msg.content}
-                  </div>
-                ))}
+  return (
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <div style={styles.progressText}>
+          進捗: {currentQuestionIndex + 1} / {INTERVIEW_QUESTIONS.length}
+        </div>
+        <div style={styles.progressBar}>
+          <div style={{ ...styles.progressFill, width: `${progress}%` }}></div>
+        </div>
+
+        {conversation.length > 0 && (
+          <div style={styles.conversationBox}>
+            {conversation.map((msg, idx) => (
+              <div
+                key={idx}
+                style={{
+                  ...styles.message,
+                  ...(msg.role === 'assistant' ? styles.assistantMessage : styles.userMessage),
+                }}
+              >
+                <strong>{msg.role === 'assistant' ? 'AI: ' : 'あなた: '}</strong>
+                {msg.content}
               </div>
-            )}
+            ))}
+          </div>
+        )}
 
-            {isAnswering && (
-              <>
-                <div style={styles.questionBox}>
-                  {getCurrentQuestion()}
-                </div>
+        {isAnswering && (
+          <>
+            <div style={styles.questionBox}>
+              {getCurrentQuestion()}
+            </div>
 
-                <div style={styles.textInputBox}>
-                  <label style={styles.textInputLabel}>💬 テキストで入力：</label>
-                  <textarea
-                    value={currentAnswer}
+            <div style={styles.textInputBox}>
+              <label style={styles.textInputLabel}>💬 テキストで入力：</label>
+              <textarea
+                value={currentAnswer}
+                onChange={(e) => {
+                  setCurrentAnswer(e.target.value);
+                  setUnsavedChanges(true);
+                }}
+                placeholder="ここに答えを入力してください..."
+                style={styles.textarea}
+              />
+
+              {/* ✅ 重要な出来事チェックボックス */}
+              <div style={{ marginTop: '15px', marginBottom: '15px' }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontSize: '16px',
+                  color: '#2c3e50',
+                  cursor: 'pointer'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={isImportantEvent}
                     onChange={(e) => {
-                      setCurrentAnswer(e.target.value);
+                      setIsImportantEvent(e.target.checked);
                       setUnsavedChanges(true);
                     }}
-                    placeholder="ここに答えを入力してください..."
-                    style={styles.textarea}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      marginRight: '10px',
+                      cursor: 'pointer'
+                    }}
                   />
+                  ⭐ これは人生の重要な出来事です
+                </label>
+                <p style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '5px', marginLeft: '30px' }}>
+                  チェックすると、年月を記録して人生年表に表示されます
+                </p>
+              </div>
 
-                  {/* 年月入力欄 */}
-                  <div>
-                    <label style={styles.textInputLabel}>📅 この出来事が起きた年月（オプション）</label>
-                    <div style={styles.yearMonthContainer}>
-                      <div style={{ flex: 1 }}>
-                        <label style={styles.yearMonthLabel}>年</label>
-                        <input
-                          type="number"
-                          placeholder="2020"
-                          min="1900"
-                          max={new Date().getFullYear()}
-                          value={eventYear}
-                          onChange={(e) => {
-                            setEventYear(e.target.value);
-                            setUnsavedChanges(true);
-                          }}
-                          style={styles.yearMonthInput}
-                        />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label style={styles.yearMonthLabel}>月</label>
-                        <input
-                          type="number"
-                          placeholder="1"
-                          min="1"
-                          max="12"
-                          value={eventMonth}
-                          onChange={(e) => {
-                            setEventMonth(e.target.value);
-                            setUnsavedChanges(true);
-                          }}
-                          style={styles.yearMonthInput}
-                        />
-                      </div>
+              {/* ✅ 重要な出来事の場合だけ年月入力を表示 */}
+              {isImportantEvent && (
+                <div style={{ 
+                  backgroundColor: '#ecf0f1', 
+                  padding: '15px', 
+                  borderRadius: '4px',
+                  marginBottom: '15px'
+                }}>
+                  <label style={styles.textInputLabel}>📅 この出来事が起きた年</label>
+                  <p style={{ fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>
+                    年だけ入力すればOK。月は覚えていれば入力してください。
+                  </p>
+                  <div style={styles.yearMonthContainer}>
+                    <div style={{ flex: 1 }}>
+                      <label style={styles.yearMonthLabel}>年（必須）</label>
+                      <input
+                        type="text"
+                        placeholder="例：1952、1950年代"
+                        value={eventYear}
+                        onChange={(e) => {
+                          setEventYear(e.target.value);
+                          setUnsavedChanges(true);
+                        }}
+                        style={styles.yearMonthInput}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={styles.yearMonthLabel}>月（任意）</label>
+                      <input
+                        type="number"
+                        placeholder="1-12"
+                        min="1"
+                        max="12"
+                        value={eventMonth}
+                        onChange={(e) => {
+                          setEventMonth(e.target.value);
+                          setUnsavedChanges(true);
+                        }}
+                        style={styles.yearMonthInput}
+                      />
                     </div>
                   </div>
+                </div>
+              )}
 
-                  {/* 写真表示 */}
-                  {currentPhotos.length > 0 && (
-                    <div>
-                      <p style={{ marginTop: '15px', fontWeight: 'bold', color: '#2c3e50' }}>
-                        📷 選択した写真 ({currentPhotos.length}枚)
-                      </p>
-                      <div style={styles.photosContainer}>
-                        {currentPhotos.map((photo) => (
-                          <div key={photo.id} style={styles.photoCard}>
-                            <img
-                              src={photo.file_path}
-                              alt="selected"
-                              style={styles.photoImage}
-                            />
-                            <button
-                              onClick={() => removePhoto(photo.id)}
-                              style={styles.removePhotoButton}
-                            >
-                              ×
-                            </button>
-                            {photo.description && (
-                              <div style={{ fontSize: '11px', padding: '5px', backgroundColor: '#f0f0f0' }}>
-                                {photo.description}
-                              </div>
-                            )}
+              {/* 写真表示 */}
+              {currentPhotos.length > 0 && (
+                <div>
+                  <p style={{ marginTop: '15px', fontWeight: 'bold', color: '#2c3e50', fontSize: '16px' }}>
+                    📷 選択した写真 ({currentPhotos.length}枚)
+                  </p>
+                  <div style={styles.photosContainer}>
+                    {currentPhotos.map((photo) => (
+                      <div key={photo.id} style={styles.photoCard}>
+                        <img
+                          src={photo.file_path}
+                          alt="selected"
+                          style={styles.photoImage}
+                        />
+                        <button
+                          onClick={() => removePhoto(photo.id)}
+                          style={styles.removePhotoButton}
+                        >
+                          ×
+                        </button>
+                        {photo.description && (
+                          <div style={{ fontSize: '12px', padding: '5px', backgroundColor: '#f0f0f0' }}>
+                            {photo.description}
                           </div>
-                        ))}
+                        )}
                       </div>
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
+              )}
+            </div>
 
-                {/* 隠しファイル入力 */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  style={{ display: 'none' }}
-                />
+            {/* 隠しファイル入力 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+            />
 
-                <div style={styles.buttonContainer}>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{
-                      ...styles.button,
-                      ...styles.photoButton,
-                    }}
-                  >
-                    📷 写真を追加
-                  </button>
-                  <button
-                    onClick={startVoiceInput}
-                    disabled={listening || processing}
-                    style={{
-                      ...styles.button,
-                      ...styles.voiceButton,
-                      opacity: listening || processing ? 0.6 : 1,
-                    }}
-                  >
-                    🎤 {listening ? '聴取中...' : '音声で答える'}
-                  </button>
-                  <button
-                    onClick={submitAnswer}
-                    disabled={!currentAnswer.trim() || processing}
-                    style={{
-                      ...styles.button,
-                      ...styles.submitButton,
-                      opacity: !currentAnswer.trim() || processing ? 0.6 : 1,
-                    }}
-                  >
-                    {processing ? '処理中...' : '次の質問へ →'}
-                  </button>
-                </div>
+            <div style={styles.buttonContainer}>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  ...styles.button,
+                  ...styles.photoButton,
+                }}
+              >
+                📷 写真UP
+              </button>
+              <button
+                onClick={startVoiceInput}
+                disabled={listening || processing}
+                style={{
+                  ...styles.button,
+                  ...styles.voiceButton,
+                  opacity: listening || processing ? 0.6 : 1,
+                }}
+              >
+                🎤 {listening ? '聴取中...' : 'マイク'}
+              </button>
+              <button
+                onClick={submitAnswer}
+                disabled={!currentAnswer.trim() || processing}
+                style={{
+                  ...styles.button,
+                  ...styles.submitButton,
+                  opacity: !currentAnswer.trim() || processing ? 0.6 : 1,
+                }}
+              >
+                {processing ? '処理中...' : '次問→'}
+              </button>
+            </div>
 
-                {unsavedChanges && (
-                  <button
-                    onClick={saveAndPause}
-                    style={{
-                      ...styles.button,
-                      ...styles.pauseButton,
-                      width: '100%',
-                      marginTop: '10px',
-                    }}
-                  >
-                    💾 進捗を保存して一時中断
-                  </button>
-                )}
-              </>
+            {unsavedChanges && (
+              <button
+                onClick={saveAndPause}
+                style={{
+                  ...styles.button,
+                  ...styles.pauseButton,
+                  width: '100%',
+                  marginTop: '10px',
+                }}
+              >
+                💾 保存して中断
+              </button>
             )}
           </>
         )}
       </div>
 
-      {/* 写真選択モーダル（アップロード済みから選ぶ場合用） */}
+      {/* 写真選択モーダル */}
       {showPhotoModal && (
         <div style={styles.modal} onClick={() => setShowPhotoModal(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <h2 style={styles.modalTitle}>📷 写真を選択</h2>
             {availablePhotos.length === 0 ? (
-              <p style={{ color: '#7f8c8d' }}>
-                アップロード済みの写真がありません。写真を追加ボタンからPCから選んでください。
+              <p style={{ color: '#7f8c8d', fontSize: '16px' }}>
+                アップロード済みの写真がありません。写真UPボタンからPCから選んでください。
               </p>
             ) : (
               <div style={styles.photoGrid}>

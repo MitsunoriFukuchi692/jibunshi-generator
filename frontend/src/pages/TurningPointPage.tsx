@@ -39,44 +39,66 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert('お使いのブラウザは音声入力に対応していません');
+      alert('お使いのブラウザはマイク入力に対応していません');
       return;
     }
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'ja-JP';
+    
+    // ✅ 修正: 複数の音声を継続的に認識
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
     setListeningIndex({ field, index });
 
     recognition.onstart = () => {
-      console.log('音声認識開始...');
+      console.log('🎤 マイク開始...');
     };
 
     recognition.onresult = (event: any) => {
       let transcript = '';
+      
+      // ✅ 修正: 確定した結果のみを処理
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          transcript += event.results[i][0].transcript;
+        }
       }
 
-      const updated = [...turningPoints];
-      if (field === 'turning_point') {
-        updated[index].turning_point += transcript;
-      } else if (field === 'event_title') {
-        updated[index].event_title += transcript;
-      } else {
-        updated[index].event_description += transcript;
+      if (transcript) {
+        console.log('📝 Transcript:', transcript);
+        
+        const updated = [...turningPoints];
+        // ✅ 修正: += で前のテキストを保持
+        if (field === 'turning_point') {
+          updated[index].turning_point = (updated[index].turning_point || '') + '\n' + transcript;
+        } else if (field === 'event_title') {
+          updated[index].event_title = (updated[index].event_title || '') + '\n' + transcript;
+        } else {
+          updated[index].event_description = (updated[index].event_description || '') + '\n' + transcript;
+        }
+        setTurningPoints(updated);
       }
-      setTurningPoints(updated);
       setListeningIndex(null);
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
+      console.error('❌ マイク認識エラー:', event.error);
       setListeningIndex(null);
-      alert('音声認識エラーが発生しました');
+      if (event.error !== 'no-speech') {
+        alert(`マイク認識エラー: ${event.error}`);
+      }
+    };
+
+    recognition.onend = () => {
+      console.log('✅ マイク終了');
+      setListeningIndex(null);
     };
 
     recognition.start();
   };
+
 
   const addTurningPoint = () => {
     setTurningPoints([
@@ -136,13 +158,14 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
       maxWidth: '900px',
       margin: '0 auto',
       padding: '20px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif',
     },
     header: {
       textAlign: 'center' as const,
       marginBottom: '30px',
     },
     title: {
-      fontSize: '28px',
+      fontSize: '32px',
       fontWeight: 'bold',
       color: '#2c3e50',
       marginBottom: '10px',
@@ -151,9 +174,10 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
       backgroundColor: '#e8f4f8',
       padding: '15px',
       borderRadius: '4px',
-      fontSize: '14px',
+      fontSize: '15px',
       color: '#2c3e50',
       marginBottom: '20px',
+      lineHeight: '1.6',
     },
     card: {
       backgroundColor: 'white',
@@ -164,68 +188,73 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
     },
     pointCard: {
       backgroundColor: '#f8f9fa',
-      padding: '15px',
+      padding: '20px',
       borderRadius: '8px',
-      marginBottom: '15px',
+      marginBottom: '20px',
       border: '1px solid #ddd',
     },
     label: {
       display: 'block',
       marginBottom: '8px',
-      fontSize: '14px',
+      fontSize: '16px',
       fontWeight: 'bold',
       color: '#2c3e50',
     },
     input: {
       width: '100%',
-      padding: '10px',
-      fontSize: '14px',
-      border: '1px solid #ddd',
-      borderRadius: '4px',
+      padding: '12px',
+      fontSize: '16px',
+      border: '2px solid #bdc3c7',
+      borderRadius: '8px',
       boxSizing: 'border-box' as const,
-      marginBottom: '12px',
+      marginBottom: '15px',
+      minHeight: '40px',
     },
     textarea: {
       width: '100%',
-      padding: '10px',
-      fontSize: '14px',
-      border: '1px solid #ddd',
-      borderRadius: '4px',
+      padding: '12px',
+      fontSize: '16px',
+      border: '2px solid #bdc3c7',
+      borderRadius: '8px',
       fontFamily: 'inherit',
       boxSizing: 'border-box' as const,
       resize: 'vertical' as const,
-      marginBottom: '12px',
+      marginBottom: '15px',
+      minHeight: '100px',
     },
     row: {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr 1fr',
-      gap: '10px',
-      marginBottom: '12px',
+      gap: '12px',
+      marginBottom: '15px',
     },
     inputWithButton: {
       display: 'flex',
       gap: '10px',
-      alignItems: 'center',
-      marginBottom: '12px',
+      alignItems: 'flex-start',
+      marginBottom: '15px',
     },
     button: {
-      padding: '10px 15px',
-      fontSize: '14px',
-      borderRadius: '4px',
+      padding: '12px 16px',
+      fontSize: '16px',
+      borderRadius: '8px',
       cursor: 'pointer',
       border: 'none',
       transition: 'all 0.3s ease',
+      fontWeight: '600',
+      minHeight: '44px',
     },
     voiceButton: {
-      backgroundColor: '#3498db',
+      backgroundColor: '#e74c3c',
       color: 'white',
-      padding: '10px 12px',
-      fontSize: '12px',
+      padding: '12px 16px',
+      fontSize: '14px',
       whiteSpace: 'nowrap' as const,
-      minWidth: '80px',
+      minWidth: '100px',
+      minHeight: '44px',
     },
     voiceButtonListening: {
-      backgroundColor: '#e74c3c',
+      backgroundColor: '#c0392b',
       animation: 'pulse 1s infinite',
     },
     addButton: {
@@ -233,21 +262,24 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
       color: 'white',
       marginBottom: '20px',
       width: '100%',
+      minHeight: '48px',
     },
     removeButton: {
       backgroundColor: '#e74c3c',
       color: 'white',
-      padding: '8px 12px',
-      fontSize: '12px',
+      padding: '12px 16px',
+      fontSize: '14px',
       width: '100%',
-      marginTop: '10px',
+      marginTop: '15px',
+      minHeight: '44px',
     },
     saveButton: {
       width: '100%',
-      padding: '15px',
+      padding: '16px',
       backgroundColor: '#27ae60',
       color: 'white',
       fontSize: '16px',
+      minHeight: '48px',
     },
   };
 
@@ -261,17 +293,17 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
       `}</style>
 
       <div style={styles.header}>
-        <h1 style={styles.title}>✏️ 人生のターニングポイント</h1>
+        <h1 style={styles.title}>✍️ 人生の転機</h1>
       </div>
 
       <div style={styles.info}>
-        あなたの人生において大きな転機となった出来事を入力してください。複数のターニングポイントを追加できます。🎤 のボタンで音声入力できます。
+        あなたの人生において大きな転機となった出来事を入力してください。複数のターニングポイントを追加できます。🎤 のボタンでマイク入力できます。
       </div>
 
       <div style={styles.card}>
         {turningPoints.map((tp, index) => (
           <div key={index} style={styles.pointCard}>
-            <h3 style={{ marginTop: 0, color: '#2c3e50' }}>ターニングポイント {index + 1}</h3>
+            <h3 style={{ marginTop: 0, color: '#2c3e50', fontSize: '18px' }}>転機 {index + 1}</h3>
 
             <div style={styles.row}>
               <div>
@@ -311,7 +343,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
               </div>
             </div>
 
-            <label style={styles.label}>ターニングポイント（タイトル）</label>
+            <label style={styles.label}>転機のタイトル</label>
             <div style={styles.inputWithButton}>
               <input
                 type="text"
@@ -328,7 +360,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                   ...(listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
                 }}
               >
-                🎤 {listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? '聴取中...' : '音声入力'}
+                🎤 {listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? '聴取中...' : 'マイク'}
               </button>
             </div>
 
@@ -349,19 +381,19 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                   ...(listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
                 }}
               >
-                🎤 {listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? '聴取中...' : '音声入力'}
+                🎤 {listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? '聴取中...' : 'マイク'}
               </button>
             </div>
 
             <label style={styles.label}>説明 *</label>
             <div style={styles.inputWithButton}>
               <textarea
-                placeholder="このターニングポイントについて詳しく説明してください（最大500文字）"
+                placeholder="この転機について詳しく説明してください（最大500文字）"
                 value={tp.event_description}
                 onChange={(e) =>
                   handleInputChange(index, 'event_description', e.target.value.slice(0, 500))
                 }
-                style={{ ...styles.textarea, height: '100px', marginBottom: 0, flex: 1 }}
+                style={{ ...styles.textarea, marginBottom: 0, flex: 1 }}
               />
               <button
                 onClick={() => startVoiceInput(index, 'event_description')}
@@ -371,10 +403,10 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                   ...(listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
                 }}
               >
-                🎤 {listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? '聴取中...' : '音声入力'}
+                🎤 {listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? '聴取中...' : 'マイク'}
               </button>
             </div>
-            <div style={{ fontSize: '12px', color: '#7f8c8d' }}>
+            <div style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '15px' }}>
               {tp.event_description.length}/500文字
             </div>
 
@@ -383,7 +415,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                 onClick={() => removeTurningPoint(index)}
                 style={{ ...styles.button, ...styles.removeButton }}
               >
-                このターニングポイントを削除
+                この転機を削除
               </button>
             )}
           </div>
@@ -393,7 +425,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
           onClick={addTurningPoint}
           style={{ ...styles.button, ...styles.addButton }}
         >
-          + ターニングポイントを追加
+          + 転機を追加
         </button>
 
         <button
