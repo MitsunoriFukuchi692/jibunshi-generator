@@ -7,7 +7,7 @@ export default function Header({ currentPage, onPageChange }: HeaderProps) {
   return (
     <header style={styles.header}>
       <div style={styles.container}>
-        <h1 style={styles.title}>📖 自分史ジェネレーター</h1>
+        <h1 style={styles.title}>📖 人生記録</h1>
         <nav style={styles.nav}>
           <button
             style={{
@@ -16,7 +16,7 @@ export default function Header({ currentPage, onPageChange }: HeaderProps) {
             }}
             onClick={() => onPageChange('user')}
           >
-            ユーザー
+            利用者
           </button>
           <button
             style={{
@@ -25,7 +25,7 @@ export default function Header({ currentPage, onPageChange }: HeaderProps) {
             }}
             onClick={() => onPageChange('interview')}
           >
-            インタビュー
+            聞き取り
           </button>
           <button
             style={{
@@ -34,7 +34,7 @@ export default function Header({ currentPage, onPageChange }: HeaderProps) {
             }}
             onClick={() => onPageChange('corrected')}
           >
-            修正済みテキスト
+            保存庫
           </button>
           <button
             style={{
@@ -57,6 +57,7 @@ const styles = {
     color: 'white',
     padding: '20px 0',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif',
   },
   container: {
     maxWidth: '1200px',
@@ -65,23 +66,28 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    padding: '0 20px',
   },
   title: {
-    fontSize: '24px',
+    fontSize: '28px',
     fontWeight: 'bold',
+    margin: '0',
   },
   nav: {
     display: 'flex',
-    gap: '10px',
+    gap: '12px',
   },
   navButton: {
     backgroundColor: 'transparent',
     color: 'white',
-    padding: '10px 20px',
+    padding: '12px 24px',
     border: '2px solid white',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '14px',
+    fontSize: '16px',
+    fontWeight: '600',
+    minHeight: '44px',
+    transition: 'all 0.3s ease',
   },
   navButtonActive: {
     backgroundColor: '#3498db',

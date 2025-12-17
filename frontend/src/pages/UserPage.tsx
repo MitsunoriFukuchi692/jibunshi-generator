@@ -4,11 +4,13 @@ import { API_URL } from '../config';
 export default function UserPage({
   userId,
   setUserId,
-  setToken
+  setToken,
+  setUserInfo
 }: {
   userId: number | null;
   setUserId: (id: number) => void;
   setToken: (token: string) => void;
+  setUserInfo?: (info: { name: string; age: number }) => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,7 +25,7 @@ export default function UserPage({
     e.preventDefault();
     setError(null);
     setLoading(true);
-    setDebugInfo(''); // デバッグ情報をリセット
+    setDebugInfo('');
 
     try {
       const apiUrl = API_URL;
@@ -32,23 +34,30 @@ export default function UserPage({
       const endpoint = isLogin ? '/api/users/login' : '/api/users/register';
       const body: any = { email, password };
       
-      // 新規登録時は名前と年齢を追加
+      // 登録時のみ name と age が必須
       if (!isLogin) {
         if (!name.trim()) {
           throw new Error('名前を入力してください');
         }
         if (!age || parseInt(age) < 1 || parseInt(age) > 120) {
-          throw new Error('正しい年齢を入力してください（1〜120）');
+          throw new Error('正しい年齢を入力してください（1～120）');
         }
         body.name = name;
         body.age = parseInt(age);
+      } else {
+        // ログイン時も name と age を送信（履歴用）
+        if (name.trim()) {
+          body.name = name;
+        }
+        if (age && parseInt(age) >= 1 && parseInt(age) <= 120) {
+          body.age = parseInt(age);
+        }
       }
 
       const fullUrl = `${apiUrl}${endpoint}`;
       
-      // デバッグ情報をログに記録
       const debugMsg = `
-📤 リクエスト情報:
+🤔 リクエスト情報:
 - URL: ${fullUrl}
 - メソッド: POST
 - ボディ: ${JSON.stringify(body, null, 2)}
@@ -88,19 +97,26 @@ export default function UserPage({
       setDebugInfo(prev => prev + successMsg);
 
       // ① 先に state を更新
-      console.log('🔄 State を更新中...');
+      console.log('📄 State を更新中...');
       setUserId(data.userId);
       setToken(data.token);
+      
+      // ② ユーザー情報を state に保存
+      const userInfo = { name: data.user.name, age: data.user.age };
+      if (setUserInfo) {
+        setUserInfo(userInfo);
+      }
 
-      // ② その後 localStorage に保存
+      // ③ その後 localStorage に保存
       console.log('💾 localStorage に保存中...');
       localStorage.setItem('token', data.token);
       localStorage.setItem('userId', String(data.userId));
+      localStorage.setItem('userInfo', JSON.stringify(userInfo));
 
-      // ③ 少し遅延させてから hash を変更
+      // ④ 少し遅延させてから hash を変更
       console.log('⏰ 100ms 待機してから hash を変更...');
       setTimeout(() => {
-        console.log('🔗 Hash を変更: #interview');
+        console.log('🔖 Hash を変更: #interview');
         window.location.hash = '#interview';
       }, 100);
 
@@ -120,17 +136,19 @@ export default function UserPage({
       margin: '0 auto',
       padding: '40px 20px',
       textAlign: 'center' as const,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif',
     },
     title: {
-      fontSize: '28px',
+      fontSize: '32px',
       fontWeight: 'bold' as const,
-      marginBottom: '10px',
+      marginBottom: '15px',
       color: '#2c3e50',
     },
     subtitle: {
-      fontSize: '14px',
+      fontSize: '16px',
       color: '#7f8c8d',
       marginBottom: '30px',
+      lineHeight: '1.6',
     },
     form: {
       display: 'flex',
@@ -138,39 +156,45 @@ export default function UserPage({
       gap: '15px',
     },
     input: {
-      padding: '12px',
-      fontSize: '14px',
-      border: '1px solid #bdc3c7',
-      borderRadius: '4px',
+      padding: '14px',
+      fontSize: '16px',
+      border: '2px solid #bdc3c7',
+      borderRadius: '8px',
       fontFamily: 'inherit',
+      minHeight: '44px',
     },
     button: {
-      padding: '12px',
+      padding: '14px',
       fontSize: '16px',
       fontWeight: 'bold' as const,
       backgroundColor: '#3498db',
       color: 'white',
       border: 'none',
-      borderRadius: '4px',
+      borderRadius: '8px',
       cursor: 'pointer',
-      minHeight: '44px',
+      minHeight: '48px',
+      transition: 'background-color 0.3s ease',
     },
     toggleButton: {
-      padding: '8px 12px',
-      fontSize: '14px',
+      padding: '12px 20px',
+      fontSize: '16px',
       backgroundColor: '#ecf0f1',
       color: '#2c3e50',
-      border: '1px solid #bdc3c7',
-      borderRadius: '4px',
+      border: '2px solid #bdc3c7',
+      borderRadius: '8px',
       cursor: 'pointer',
+      fontWeight: '600',
+      minHeight: '44px',
+      transition: 'all 0.3s ease',
     },
     errorBox: {
       backgroundColor: '#fdeaea',
       color: '#c53030',
-      padding: '12px',
-      borderRadius: '4px',
+      padding: '15px',
+      borderRadius: '8px',
       marginBottom: '15px',
-      fontSize: '14px',
+      fontSize: '15px',
+      lineHeight: '1.6',
     },
     debugBox: {
       backgroundColor: '#f0f0f0',
@@ -196,8 +220,8 @@ export default function UserPage({
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>📖 自分史ジェネレーター</h1>
-      <p style={styles.subtitle}>あなたの人生を自動で物語化します</p>
+      <h1 style={styles.title}>📖 人生記録</h1>
+      <p style={styles.subtitle}>あなたの人生のお話を聞かせていただきます</p>
 
       {error && <div style={styles.errorBox}>{error}</div>}
 
@@ -209,6 +233,7 @@ export default function UserPage({
             ...styles.toggleButton,
             backgroundColor: isLogin ? '#3498db' : '#ecf0f1',
             color: isLogin ? 'white' : '#2c3e50',
+            borderColor: isLogin ? '#3498db' : '#bdc3c7',
           }}
         >
           ログイン
@@ -220,6 +245,7 @@ export default function UserPage({
             ...styles.toggleButton,
             backgroundColor: !isLogin ? '#3498db' : '#ecf0f1',
             color: !isLogin ? 'white' : '#2c3e50',
+            borderColor: !isLogin ? '#3498db' : '#bdc3c7',
           }}
         >
           新規登録
@@ -227,28 +253,25 @@ export default function UserPage({
       </div>
 
       <form onSubmit={handleSubmit} style={styles.form}>
-        {!isLogin && (
-          <>
-            <input
-              type="text"
-              placeholder="お名前"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={styles.input}
-              required={!isLogin}
-            />
-            <input
-              type="number"
-              placeholder="年齢（1〜120）"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              style={styles.input}
-              min="1"
-              max="120"
-              required={!isLogin}
-            />
-          </>
-        )}
+        {/* 登録時は name と age を必須、ログイン時はオプション */}
+        <input
+          type="text"
+          placeholder="お名前"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={styles.input}
+          required={!isLogin}
+        />
+        <input
+          type="number"
+          placeholder="年齢（1～120）"
+          value={age}
+          onChange={(e) => setAge(e.target.value)}
+          style={styles.input}
+          min="1"
+          max="120"
+          required={!isLogin}
+        />
 
         <input
           type="email"
@@ -273,7 +296,7 @@ export default function UserPage({
 
       {debugInfo && (
         <div style={styles.debugBox}>
-          <strong>🐛 デバッグ情報:</strong>
+          <strong>🛠️ デバッグ情報:</strong>
           {debugInfo}
         </div>
       )}

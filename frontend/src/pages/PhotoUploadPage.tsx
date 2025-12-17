@@ -9,7 +9,17 @@ interface UploadedPhoto {
   description: string;
 }
 
-export default function PhotoUploadPage({ userId, token, onComplete }: { userId: number; token: string | null; onComplete: () => void }) {
+export default function PhotoUploadPage({ 
+  userId, 
+  token, 
+  timelineId,
+  onComplete 
+}: { 
+  userId: number; 
+  token: string | null; 
+  timelineId?: number;
+  onComplete: () => void 
+}) {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -40,11 +50,17 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
 
     setUploading(true);
     try {
+      const uploadedPhotoIds: number[] = [];
+
+      // ステップ1: 写真をアップロード
       for (const photo of photos) {
         const formData = new FormData();
         formData.append('file', photo.file);
         formData.append('userId', userId.toString());
+        formData.append('timelineId', timelineId?.toString() || '');
         formData.append('description', photo.description);
+
+        console.log('🖼️ 写真アップロード中:', photo.filename, 'timelineId:', timelineId);
 
         const response = await fetch(`${API_URL}/api/photos`, {
           method: 'POST',
@@ -57,11 +73,15 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
         if (!response.ok) {
           throw new Error('写真のアップロードに失敗しました');
         }
+
+        const uploadedPhoto = await response.json();
+        uploadedPhotoIds.push(uploadedPhoto.id);
+        console.log('✅ 写真アップロード完了 - id:', uploadedPhoto.id);
       }
 
       alert('全ての写真がアップロードされました！');
       setPhotos([]);
-      onComplete(); // 親コンポーネントの次のステップに進む
+      onComplete();
     } catch (error) {
       console.error('アップロードエラー:', error);
       alert('写真のアップロードに失敗しました');
@@ -79,6 +99,7 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
       maxWidth: '800px',
       margin: '0 auto',
       padding: '20px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif',
     },
     header: {
       textAlign: 'center' as const,
@@ -142,8 +163,8 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
     },
     photoInput: {
       width: '100%',
-      padding: '5px',
-      fontSize: '12px',
+      padding: '8px',
+      fontSize: '14px',
       borderRadius: '4px',
       border: '1px solid #ddd',
       marginBottom: '5px',
@@ -152,9 +173,10 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
     removeButton: {
       backgroundColor: '#e74c3c',
       color: 'white',
-      padding: '5px 10px',
-      fontSize: '12px',
+      padding: '8px 12px',
+      fontSize: '14px',
       width: '100%',
+      minHeight: '40px',
     },
     uploadButton: {
       width: '100%',
@@ -163,33 +185,35 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
       color: 'white',
       fontSize: '16px',
       marginBottom: '10px',
+      minHeight: '48px',
     },
     info: {
       backgroundColor: '#e8f4f8',
       padding: '15px',
       borderRadius: '4px',
-      fontSize: '14px',
+      fontSize: '15px',
       color: '#2c3e50',
       marginBottom: '20px',
+      lineHeight: '1.6',
     },
   };
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>📸 思い出の写真をアップロード</h1>
+        <h1 style={styles.title}>📷 写真UP</h1>
       </div>
 
       <div style={styles.info}>
-        👤 思い出の写真を複数枚アップロードしてください。AI があなたの人生を分析します。
+        💭 思い出の写真を複数枚アップロードしてください。AIがあなたの人生を分析します。
       </div>
 
       <div
         style={styles.uploadBox}
         onClick={() => document.getElementById('fileInput')?.click()}
       >
-        <div style={styles.uploadText}>📷 クリックして写真を選択</div>
-        <div style={{ fontSize: '12px', color: '#7f8c8d' }}>または、ここにドラッグ＆ドロップ</div>
+        <div style={styles.uploadText}>📸 クリックして写真を選択</div>
+        <div style={{ fontSize: '14px', color: '#7f8c8d' }}>または、ここにドラッグ＆ドロップ</div>
         <input
           id="fileInput"
           type="file"
@@ -202,7 +226,7 @@ export default function PhotoUploadPage({ userId, token, onComplete }: { userId:
 
       {photos.length > 0 && (
         <>
-          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px', fontSize: '16px' }}>
             選択した写真（{photos.length}枚）
           </h3>
           <div style={styles.photosContainer}>

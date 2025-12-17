@@ -1,7 +1,18 @@
+/* グローバルスタイル - 高齢者向け */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
 .app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
 }
 
 .main-content {
@@ -10,10 +21,43 @@
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  font-size: 16px;
+}
+
+/* ボタン - 高齢者向け拡大 */
+button {
+  font-size: 16px;
+  min-height: 44px;
+  padding: 12px 20px;
+}
+
+/* 入力フォーム - 拡大 */
+input, textarea, select {
+  font-size: 16px;
+  padding: 10px;
+  min-height: 40px;
+}
+
+/* テキスト - 読みやすさ向上 */
+label {
+  font-size: 16px;
+}
+
+p {
+  font-size: 16px;
 }
 
 @media (max-width: 768px) {
   .main-content {
     padding: 15px;
+  }
+  
+  button {
+    font-size: 16px;
+    min-height: 48px;
+  }
+  
+  input, textarea {
+    font-size: 16px;
   }
 }
