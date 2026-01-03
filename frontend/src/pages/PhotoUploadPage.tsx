@@ -7,6 +7,8 @@ interface UploadedPhoto {
   file: File;
   preview: string;
   description: string;
+  originalSize: number;
+  compressedSize: number;
 }
 
 export default function PhotoUploadPage({ 
@@ -22,24 +24,114 @@ export default function PhotoUploadPage({
 }) {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [compressing, setCompressing] = useState(false);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-
-    Array.from(files).forEach((file) => {
+  // ✅ 新: 画像圧縮関数
+  const compressImage = (file: File): Promise<{ compressedFile: File; preview: string; originalSize: number; compressedSize: number }> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (event) => {
-        const newPhoto: UploadedPhoto = {
-          filename: file.name,
-          file,
-          preview: event.target?.result as string,
-          description: '',
+        const img = new Image();
+        img.onload = () => {
+          // Canvas で画像を圧縮
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas context not available'));
+            return;
+          }
+
+          // 最大幅 1200px、最大高さ 1200px にリサイズ
+          const maxWidth = 1200;
+          const maxHeight = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Canvas を Blob に変換（JPEG 品質 0.7）
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Blob creation failed'));
+                return;
+              }
+
+              const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
+              const preview = canvas.toDataURL('image/jpeg', 0.7);
+              
+              resolve({
+                compressedFile,
+                preview,
+                originalSize: file.size,
+                compressedSize: compressedFile.size
+              });
+            },
+            'image/jpeg',
+            0.7 // JPEG 品質 70%
+          );
         };
-        setPhotos((prev) => [...prev, newPhoto]);
+        img.onerror = () => {
+          reject(new Error('Image loading failed'));
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => {
+        reject(new Error('File reading failed'));
       };
       reader.readAsDataURL(file);
     });
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    setCompressing(true);
+    try {
+      const fileArray = Array.from(files);
+      
+      for (const file of fileArray) {
+        try {
+          const { compressedFile, preview, originalSize, compressedSize } = await compressImage(file);
+          
+          const newPhoto: UploadedPhoto = {
+            filename: file.name,
+            file: compressedFile,
+            preview,
+            description: '',
+            originalSize,
+            compressedSize
+          };
+          
+          setPhotos((prev) => [...prev, newPhoto]);
+          
+          console.log(`📸 画像圧縮完了: ${file.name}`);
+          console.log(`   元のサイズ: ${(originalSize / 1024 / 1024).toFixed(2)} MB`);
+          console.log(`   圧縮後: ${(compressedSize / 1024 / 1024).toFixed(2)} MB`);
+          console.log(`   圧縮率: ${(((originalSize - compressedSize) / originalSize) * 100).toFixed(1)}%`);
+        } catch (error) {
+          console.error(`❌ 画像圧縮エラー: ${file.name}`, error);
+          alert(`${file.name} の処理に失敗しました`);
+        }
+      }
+    } finally {
+      setCompressing(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -60,7 +152,7 @@ export default function PhotoUploadPage({
         formData.append('timelineId', timelineId?.toString() || '');
         formData.append('description', photo.description);
 
-        console.log('🖼️ 写真アップロード中:', photo.filename, 'timelineId:', timelineId);
+        console.log('🖼️ 写真アップロード中:', photo.filename, 'サイズ:', (photo.compressedSize / 1024).toFixed(0), 'KB');
 
         const response = await fetch(`${API_URL}/api/photos`, {
           method: 'POST',
@@ -120,6 +212,7 @@ export default function PhotoUploadPage({
       marginBottom: '20px',
       cursor: 'pointer',
       transition: 'all 0.3s ease',
+      opacity: compressing ? 0.6 : 1,
     },
     uploadText: {
       fontSize: '16px',
@@ -160,6 +253,12 @@ export default function PhotoUploadPage({
     },
     photoInfo: {
       padding: '10px',
+    },
+    photoSizeInfo: {
+      fontSize: '11px',
+      color: '#7f8c8d',
+      marginBottom: '5px',
+      lineHeight: '1.3',
     },
     photoInput: {
       width: '100%',
@@ -205,21 +304,26 @@ export default function PhotoUploadPage({
       </div>
 
       <div style={styles.info}>
-        💭 思い出の写真を複数枚アップロードしてください。AIがあなたの人生を分析します。
+        💭 思い出の写真を複数枚アップロードしてください。写真は自動で圧縮されるので、スマートフォンでも快適にアップロードできます！
       </div>
 
       <div
         style={styles.uploadBox}
-        onClick={() => document.getElementById('fileInput')?.click()}
+        onClick={() => !compressing && document.getElementById('fileInput')?.click()}
       >
-        <div style={styles.uploadText}>📸 クリックして写真を選択</div>
-        <div style={{ fontSize: '14px', color: '#7f8c8d' }}>または、ここにドラッグ＆ドロップ</div>
+        <div style={styles.uploadText}>
+          {compressing ? '📦 画像を処理中...' : '📸 クリックして写真を選択'}
+        </div>
+        <div style={{ fontSize: '14px', color: '#7f8c8d' }}>
+          {compressing ? '複数枚の場合は少しお待ちください' : 'または、ここにドラッグ＆ドロップ'}
+        </div>
         <input
           id="fileInput"
           type="file"
           multiple
           accept="image/*"
           onChange={handleFileSelect}
+          disabled={compressing}
           style={styles.fileInput}
         />
       </div>
@@ -234,6 +338,10 @@ export default function PhotoUploadPage({
               <div key={index} style={styles.photoCard}>
                 <img src={photo.preview} alt={`preview-${index}`} style={styles.photoImage} />
                 <div style={styles.photoInfo}>
+                  <div style={styles.photoSizeInfo}>
+                    <div>圧縮前: {(photo.originalSize / 1024 / 1024).toFixed(2)} MB</div>
+                    <div>圧縮後: {(photo.compressedSize / 1024 / 1024).toFixed(2)} MB</div>
+                  </div>
                   <input
                     type="text"
                     placeholder="説明を入力..."
