@@ -181,7 +181,9 @@ export default function InterviewPage({
 
           if (response.ok) {
             const serverSession = await response.json();
-            if (serverSession && serverSession.currentQuestionIndex !== undefined) {
+            console.log('✅ サーバーレスポンス受け取り:', serverSession);
+            
+            if (serverSession && serverSession.currentQuestionIndex !== undefined && serverSession.currentQuestionIndex > 0) {
               console.log('✅ サーバーからセッション復元成功:', {
                 conversation: serverSession.conversation.length,
                 answers: serverSession.answersWithPhotos.length,
@@ -205,7 +207,11 @@ export default function InterviewPage({
               setIsAnswering(true);
               fetchPhotos();
               return; // サーバー復元に成功したので終了
+            } else {
+              console.log('ℹ️ サーバーにセッションなし - ローカルストレージで復元を試みます');
             }
+          } else if (response.status === 404) {
+            console.log('ℹ️ サーバーにセッションが保存されていません（404）');
           }
         } catch (error) {
           console.warn('⚠️ サーバー復元失敗、ローカルストレージで復元を試みます:', error);
@@ -264,7 +270,7 @@ export default function InterviewPage({
     };
 
     restoreSession();
-  }, [userId, token]);
+  }, [userId, token]); // ✅ userId または token が変わるたびに実行される
 
   // 自動保存（30秒ごと）
   useEffect(() => {
