@@ -17,6 +17,7 @@ interface AnswerWithPhotos {
   photos: SelectedPhoto[];
   year?: string;
   month?: string;
+  eventTitle?: string;  // ✅ 新: 出来事のタイトル
   isImportant?: boolean;  // ✅ 新: 重要な出来事かどうか
 }
 
@@ -25,6 +26,7 @@ interface InterviewSession {
   answersWithPhotos: AnswerWithPhotos[];
   currentQuestionIndex: number;
   timestamp: number;
+  version?: number;  // ✅ バージョン管理追加
 }
 
 interface Photo {
@@ -35,7 +37,7 @@ interface Photo {
   uploaded_at: string;
 }
 
-// 質問リスト（21個）
+// 質問リスト（19個）
 const INTERVIEW_QUESTIONS = [
   // 第1部：基本情報（生い立ち）
   "どこで、いつ生まれましたか？どんな環境で育ちましたか？",
@@ -93,6 +95,7 @@ export default function InterviewPage({
   const [currentPhotos, setCurrentPhotos] = useState<SelectedPhoto[]>([]);
   const [eventYear, setEventYear] = useState<string>('');
   const [eventMonth, setEventMonth] = useState<string>('');
+  const [eventTitle, setEventTitle] = useState<string>('');
   const [isImportantEvent, setIsImportantEvent] = useState(false);  // ✅ 新: 重要な出来事フラグ
   const [availablePhotos, setAvailablePhotos] = useState<Photo[]>([]);
   const [listening, setListening] = useState(false);
@@ -159,28 +162,108 @@ export default function InterviewPage({
     }
   };
 
-  // LocalStorage からセッションを復元
+  // LocalStorage からセッションを復元 + サーバーからも試みる
   useEffect(() => {
-    const saved = localStorage.getItem(`interview_session_${userId}`);
-    if (saved) {
-      try {
-        const session: InterviewSession = JSON.parse(saved);
-        // セッションが24時間以内であれば復元
-        if (Date.now() - session.timestamp < 24 * 60 * 60 * 1000) {
-          setConversation(session.conversation);
-          setAnswersWithPhotos(session.answersWithPhotos);
-          setCurrentQuestionIndex(session.currentQuestionIndex);
-          setIsStarted(true);
-          setIsAnswering(true);
-        } else {
+    const SESSION_VERSION = 2;  // ✅ バージョン定数
+
+    const restoreSession = async () => {
+      // ① まずサーバーから復元を試みる（優先）
+      if (token && userId) {
+        try {
+          const apiUrl = API_URL;
+          const response = await fetch(`${apiUrl}/api/interview-session/load`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const serverSession = await response.json();
+            if (serverSession && serverSession.currentQuestionIndex !== undefined) {
+              console.log('✅ サーバーからセッション復元成功:', {
+                conversation: serverSession.conversation.length,
+                answers: serverSession.answersWithPhotos.length,
+                currentQuestion: serverSession.currentQuestionIndex
+              });
+
+              // サーバーから復元したデータを使用
+              const normalizedAnswers = (serverSession.answersWithPhotos || []).map((answer: any) => ({
+                text: answer.text || '',
+                photos: Array.isArray(answer.photos) ? answer.photos : [],
+                year: answer.year || '',
+                month: answer.month || '',
+                eventTitle: answer.eventTitle || '',
+                isImportant: answer.isImportant || false
+              }));
+
+              setConversation(serverSession.conversation);
+              setAnswersWithPhotos(normalizedAnswers);
+              setCurrentQuestionIndex(serverSession.currentQuestionIndex);
+              setIsStarted(true);
+              setIsAnswering(true);
+              fetchPhotos();
+              return; // サーバー復元に成功したので終了
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ サーバー復元失敗、ローカルストレージで復元を試みます:', error);
+          // サーバー復元失敗時はローカルストレージにフォールバック
+        }
+      }
+
+      // ② ローカルストレージから復元（フォールバック）
+      const saved = localStorage.getItem(`interview_session_${userId}`);
+      if (saved) {
+        try {
+          const session: InterviewSession = JSON.parse(saved);
+          
+          // ✅ バージョンチェック - 古いセッションは削除
+          if (session.version !== SESSION_VERSION) {
+            console.warn('⚠️ セッションバージョン不一致 - 古いセッションを削除します');
+            localStorage.removeItem(`interview_session_${userId}`);
+            fetchPhotos();
+            return;
+          }
+
+          // セッションが24時間以内であれば復元
+          if (Date.now() - session.timestamp < 24 * 60 * 60 * 1000) {
+            // ✅ データを正規化（undefined を適切な値に置換）
+            const normalizedAnswers = (session.answersWithPhotos || []).map((answer: any) => ({
+              text: answer.text || '',
+              photos: Array.isArray(answer.photos) ? answer.photos : [],  // ✅ undefined → []
+              year: answer.year || '',
+              month: answer.month || '',
+              eventTitle: answer.eventTitle || '',
+              isImportant: answer.isImportant || false
+            }));
+
+            console.log('✅ ローカルストレージからセッション復元:', {
+              conversation: session.conversation.length,
+              answers: normalizedAnswers.length,
+              currentQuestion: session.currentQuestionIndex
+            });
+
+            setConversation(session.conversation);
+            setAnswersWithPhotos(normalizedAnswers);
+            setCurrentQuestionIndex(session.currentQuestionIndex);
+            setIsStarted(true);
+            setIsAnswering(true);
+          } else {
+            localStorage.removeItem(`interview_session_${userId}`);
+          }
+        } catch (e) {
+          console.error('❌ セッション復元エラー:', e);
+          // 復元失敗時は古いセッションを削除
           localStorage.removeItem(`interview_session_${userId}`);
         }
-      } catch (e) {
-        console.error('セッション復元エラー:', e);
       }
-    }
 
-    fetchPhotos();
+      fetchPhotos();
+    };
+
+    restoreSession();
   }, [userId, token]);
 
   // 自動保存（30秒ごと）
@@ -195,16 +278,36 @@ export default function InterviewPage({
   }, [conversation, answersWithPhotos, currentQuestionIndex, userId]);
 
   const saveSessionToLocalStorage = () => {
+    const SESSION_VERSION = 2;  // ✅ バージョン定数
+
     const session: InterviewSession = {
       conversation,
-      answersWithPhotos,
+      answersWithPhotos: answersWithPhotos.map(a => ({
+        text: a.text || '',
+        photos: a.photos || [],  // ✅ 必ず配列に
+        year: a.year || '',
+        month: a.month || '',
+        eventTitle: a.eventTitle || '',
+        isImportant: a.isImportant || false
+      })),
       currentQuestionIndex,
       timestamp: Date.now(),
+      version: SESSION_VERSION  // ✅ バージョンを含める
     };
-    localStorage.setItem(`interview_session_${userId}`, JSON.stringify(session));
-    console.log('✅ セッション保存完了');
-    console.log('📊 保存されたanswersWithPhotos数:', answersWithPhotos.length);
-    console.log('📸 最後の回答の写真数:', answersWithPhotos[answersWithPhotos.length - 1]?.photos.length || 0);
+    
+    try {
+      localStorage.setItem(`interview_session_${userId}`, JSON.stringify(session));
+      console.log('✅ セッション保存完了');
+      console.log('📊 保存されたanswersWithPhotos数:', answersWithPhotos.length);
+      console.log('📸 最後の回答の写真数:', answersWithPhotos[answersWithPhotos.length - 1]?.photos.length || 0);
+    } catch (error) {
+      console.error('❌ セッション保存エラー:', error);
+      // localStorage が満杯の場合、古いセッションをすべて削除
+      if (error instanceof Error && error.message.includes('QuotaExceededError')) {
+        console.warn('⚠️ localStorage がいっぱいです。古いセッションを削除します');
+        localStorage.removeItem(`interview_session_${userId}`);
+      }
+    }
   };
 
   const getCurrentQuestion = (): string => {
@@ -218,13 +321,38 @@ export default function InterviewPage({
     setError(null);
 
     try {
+      // ✅ 新規開始時に古いセッションをクリア
+      console.log('🔄 新規インタビュー開始 - 古いセッションをクリア');
+      localStorage.removeItem(`interview_session_${userId}`);
+
+      // ✅ サーバー側の古いデータも削除（オプション）
+      try {
+        const apiUrl = API_URL;
+        const response = await fetch(`${apiUrl}/api/cleanup/old-data`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ user_id: userId })
+        });
+        if (response.ok) {
+          console.log('✅ サーバー側の古いデータを削除しました');
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ サーバー削除に失敗（続行します）:', cleanupError);
+      }
+
       const question = getCurrentQuestion();
       setConversation([{ role: 'assistant', content: question }]);
+      setAnswersWithPhotos([]);  // ✅ 初期化
       setIsAnswering(true);
       setCurrentAnswer('');
       setCurrentPhotos([]);
       setEventYear('');
       setEventMonth('');
+      setEventTitle('');  // ✅ eventTitle をリセット
+      setIsImportantEvent(false);  // ✅ isImportant をリセット
       saveSessionToLocalStorage();
     } catch (error) {
       console.error('❌ Interview error:', error);
@@ -339,24 +467,29 @@ export default function InterviewPage({
     setError(null);
 
     try {
+      // ✅ currentPhotos が undefined の場合は空配列に
+      const photosToSave = currentPhotos && Array.isArray(currentPhotos) ? currentPhotos : [];
+      
+      console.log('💾 回答を保存:', {
+        questionIndex: currentQuestionIndex,
+        isImportant: isImportantEvent,
+        photoCount: photosToSave.length,  // ✅ 0 の場合も明示的にログ
+        year: eventYear || 'なし',
+        month: eventMonth || 'なし'
+      });
+
       // ✅ 重要な出来事の場合だけ年月を記録、そうでなければ記録しない
       const newAnswerWithPhotos: AnswerWithPhotos = {
         text: currentAnswer,
-        photos: currentPhotos,
+        photos: photosToSave,  // ✅ undefined → [] に統一
         year: isImportantEvent ? (eventYear || undefined) : undefined,
         month: isImportantEvent ? (eventMonth || undefined) : undefined,
+        eventTitle: isImportantEvent ? (eventTitle || undefined) : undefined,  // ✅ eventTitle を含める
         isImportant: isImportantEvent,  // ✅ 重要フラグを記録
       };
 
       const newAnswersWithPhotos = [...answersWithPhotos, newAnswerWithPhotos];
       setAnswersWithPhotos(newAnswersWithPhotos);
-
-      console.log('📝 回答を保存:', {
-        questionIndex: currentQuestionIndex,
-        isImportant: isImportantEvent,
-        year: newAnswerWithPhotos.year,
-        month: newAnswerWithPhotos.month,
-      });
 
       // 会話に追加
       const newConversation = [...conversation, { role: 'user', content: currentAnswer }];
@@ -371,9 +504,27 @@ export default function InterviewPage({
         setCurrentPhotos([]);
         setEventYear('');
         setEventMonth('');
+        setEventTitle('');  // ✅ eventTitle をリセット
         setIsImportantEvent(false);  // ✅ 重要フラグをリセット
         setUnsavedChanges(false);
-        saveSessionToLocalStorage();
+
+        // ✅ 状態更新後にセッション保存（重要）
+        setTimeout(() => {
+          const SESSION_VERSION = 2;
+          const sessionToSave: InterviewSession = {
+            conversation: newConversation,
+            answersWithPhotos: newAnswersWithPhotos,
+            currentQuestionIndex: currentQuestionIndex + 1,
+            timestamp: Date.now(),
+            version: SESSION_VERSION
+          };
+          try {
+            localStorage.setItem(`interview_session_${userId}`, JSON.stringify(sessionToSave));
+            console.log('✅ セッション更新保存');
+          } catch (e) {
+            console.error('❌ セッション保存失敗:', e);
+          }
+        }, 0);
       } else {
         // インタビュー完了
         setConversation(newConversation);
@@ -381,6 +532,26 @@ export default function InterviewPage({
         setFinalAnswersWithPhotos(newAnswersWithPhotos);
         setIsAnswering(false);
         localStorage.removeItem(`interview_session_${userId}`);
+
+        // ✅ サーバーのセッションも削除
+        try {
+          const apiUrl = API_URL;
+          await fetch(`${apiUrl}/api/interview-session`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          console.log('✅ サーバーのセッションを削除');
+        } catch (error) {
+          console.warn('⚠️ サーバーセッション削除失敗:', error);
+        }
+
+        // ✅ AIGeneration へ遷移
+        if (onAIGenerationStart) {
+          onAIGenerationStart(newAnswersWithPhotos);
+        }
       }
     } catch (error) {
       console.error('❌ 回答送信エラー:', error);
@@ -392,10 +563,53 @@ export default function InterviewPage({
     }
   };
 
-  const saveAndPause = () => {
+  const saveAndPause = async () => {
+    // ① ローカルに保存
     saveSessionToLocalStorage();
-    alert('進捗を保存しました。後で再開できます。');
-    setUnsavedChanges(false);
+
+    // ② バックエンドにも保存（新しいエンドポイント）
+    try {
+      setProcessing(true);
+      const apiUrl = API_URL;
+      
+      console.log('💾 サーバーにセッション保存開始:', {
+        userId,
+        questionIndex: currentQuestionIndex,
+        answerCount: answersWithPhotos.length,
+        conversationLength: conversation.length
+      });
+
+      const response = await fetch(`${apiUrl}/api/interview-session/save`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          currentQuestionIndex,
+          conversation,
+          answersWithPhotos,
+          timestamp: Date.now()
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Server save failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ サーバー保存成功:', result);
+      alert('✅ 進捗をサーバーに保存しました。\n次に再開した時に途中から続けられます。');
+    } catch (error) {
+      console.error('❌ サーバー保存エラー:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`⚠️ ローカルには保存されましたが、サーバー保存に失敗しました。\n${errorMessage}\n\nブラウザを閉じずにもう一度お試しください。`);
+    } finally {
+      setProcessing(false);
+      setUnsavedChanges(false);
+    }
   };
 
   const progress =
@@ -876,6 +1090,25 @@ export default function InterviewPage({
                   borderRadius: '4px',
                   marginBottom: '15px'
                 }}>
+                  <label style={styles.textInputLabel}>📌 この出来事のタイトル</label>
+                  <p style={{ fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>
+                    例：「結婚式」「初めての転職」「子どもが生まれた」など、短くまとめてください。
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="例：結婚、転職、引っ越し"
+                    value={eventTitle}
+                    onChange={(e) => {
+                      setEventTitle(e.target.value);
+                      setUnsavedChanges(true);
+                    }}
+                    style={{
+                      ...styles.yearMonthInput,
+                      width: '100%',
+                      marginBottom: '15px'
+                    }}
+                  />
+
                   <label style={styles.textInputLabel}>📅 この出来事が起きた年</label>
                   <p style={{ fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>
                     年だけ入力すればOK。月は覚えていれば入力してください。

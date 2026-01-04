@@ -14,14 +14,15 @@ export default function PDFDisplayPage({
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
     generatePDF();
   }, []);
 
+  // ✅ 修正版: timeline データを取得して PDF 生成に含める
   const generatePDF = async () => {
     try {
       setProgress(10);
@@ -30,31 +31,62 @@ export default function PDFDisplayPage({
       const apiUrl = API_URL;
       if (!apiUrl) throw new Error('API URLが設定されていません');
 
-      // PDFを生成
+      // ✅ Step 1: timeline データを取得
+      console.log('📚 Timeline データを取得中...');
+      const timelineResponse = await fetch(`${apiUrl}/api/timeline`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      let timelines: any[] = [];
+      if (timelineResponse.ok) {
+        timelines = await timelineResponse.json();
+        console.log('✅ Timeline取得完了:', timelines.length, '件');
+      } else {
+        console.warn('⚠️ Timeline取得に失敗しましたが続行します...');
+      }
+
+      setProgress(30);
+
+      // ✅ Step 2: PDF生成時に timeline を含める
+      console.log('🤖 PDF生成APIにリクエスト送信...');
       const response = await fetch(`${apiUrl}/api/pdf/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({
+          timelines: timelines  // ✅ timeline データを送信
+        })
       });
 
       setProgress(50);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('PDF generation error:', errorData);
-        throw new Error(`PDF生成に失敗しました: ${response.status}`);
+        const errorText = await response.text();
+        console.error('PDF generation error:', errorText);
+        throw new Error(`PDFに失敗しました: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log('✅ PDF生成完了 - filename:', data.filename);
+      // ✅ レスポンスを blob として取得
+      const blob = await response.blob();
+      console.log('✅ PDFバッファ受信 - size:', blob.size, 'bytes');
+
+      if (blob.size === 0) {
+        throw new Error('PDFバッファが空です');
+      }
+
+      // ✅ blob URL を作成してプレビュー表示
+      const blobUrl = URL.createObjectURL(blob);
+      setPdfBlob(blob);
+      setPdfUrl(blobUrl);
 
       setProgress(80);
 
-      setPdfFileName(data.filename);
-      setPdfUrl(`${apiUrl}${data.filepath}`);
-
+      // ✅ 成功
       setProgress(100);
       setLoading(false);
 
@@ -66,22 +98,23 @@ export default function PDFDisplayPage({
     }
   };
 
-  const handleDownload = async () => {
-    if (!pdfFileName) return;
+  const handleDownload = () => {
+    if (!pdfBlob) return;
 
     try {
-      const apiUrl = API_URL;
-      const downloadUrl = `${apiUrl}/api/pdf/download/${pdfFileName}`;
-
-      // ブラウザのダウンロード機能を使用
+      // ✅ blob から download link を作成
+      const blobUrl = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = pdfFileName;
+      link.href = blobUrl;
+      link.download = `autobiography_${userId}_${new Date().getTime()}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      console.log('✅ PDFダウンロード開始:', pdfFileName);
+      // ✅ blob URL を解放
+      URL.revokeObjectURL(blobUrl);
+
+      console.log('✅ PDFダウンロード開始:', link.download);
     } catch (error) {
       console.error('❌ ダウンロードエラー:', error);
       alert('ダウンロードに失敗しました');
@@ -232,7 +265,7 @@ export default function PDFDisplayPage({
     return (
       <div style={styles.container}>
         <div style={styles.header}>
-          <h1 style={styles.title}>⚠️ PDF生成エラー</h1>
+          <h1 style={styles.title}>⚠️ PDFエラー</h1>
         </div>
         <div style={styles.card}>
           <div style={styles.errorBox}>
@@ -248,7 +281,7 @@ export default function PDFDisplayPage({
               width: '100%',
             }}
           >
-            🔄 もう一度試す
+            📄 もう一度試す
           </button>
         </div>
       </div>
@@ -266,7 +299,7 @@ export default function PDFDisplayPage({
         `}</style>
         <div style={styles.header}>
           <h1 style={styles.title}>📄 自分史PDFを作成中</h1>
-          <p style={styles.subtitle}>しばらくお待ちください...</p>
+          <p style={styles.subtitle}>しばらくおまちください...</p>
         </div>
         <div style={styles.card}>
           <div style={styles.loadingContainer}>
@@ -311,7 +344,7 @@ export default function PDFDisplayPage({
         </div>
 
         <div style={styles.pdfInfo}>
-          📁 ファイル名: {pdfFileName}
+          ✨ PDFプレビュー
         </div>
 
         {pdfUrl && (

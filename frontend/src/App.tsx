@@ -2,14 +2,16 @@ import { useState, useEffect } from 'react'
 import UserPage from './pages/UserPage'
 import InterviewPage from './pages/InterviewPage'
 import AIGenerationPage from './pages/AIGenerationPage'
-import PublisherPage from './pages/PublisherPage'
 import TextCorrectionPage from './pages/TextCorrectionPage'
 import CorrectedTextPage from './pages/CorrectedTextPage'
+import TimelineListPage from './pages/TimelineListPage'
+import PDFDisplayPage from './pages/PDFDisplayPage'
 import Header from './components/Common/Header'
 import './App.css'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<'user' | 'interview' | 'aiGeneration' | 'correction' | 'corrected' | 'publisher'>('user')
+  // ✅ TurningPointPage を削除（不要）
+  const [currentPage, setCurrentPage] = useState<'user' | 'interview' | 'aiGeneration' | 'correction' | 'corrected' | 'timelineList' | 'pdfDisplay'>('user')
   const [userId, setUserId] = useState<number | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [userInfo, setUserInfo] = useState<{ name: string; age: number } | undefined>()
@@ -22,7 +24,7 @@ function App() {
     const storedUserId = localStorage.getItem('userId')
     const storedToken = localStorage.getItem('token')
     const storedUserInfo = localStorage.getItem('userInfo')
-    
+
     if (storedUserId) {
       setUserId(parseInt(storedUserId))
     }
@@ -36,17 +38,16 @@ function App() {
         console.error('Error parsing userInfo:', e)
       }
     }
-    
-    // 初期化完了フラグを立てる
+
     setIsInitialized(true)
   }, [])
 
-  // ② localStorage の初期化後に、hash に基づいてページを切り替え
+  // ② hash に基づいてページを切り替え
   useEffect(() => {
-    if (!isInitialized) return // 初期化まで待つ
-    
+    if (!isInitialized) return
+
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1) // '#' を削除
+      const hash = window.location.hash.slice(1)
       if (hash === 'interview') {
         setCurrentPage('interview')
       } else if (hash === 'aiGeneration') {
@@ -55,14 +56,16 @@ function App() {
         setCurrentPage('correction')
       } else if (hash === 'corrected') {
         setCurrentPage('corrected')
-      } else if (hash === 'publisher') {
-        setCurrentPage('publisher')
+      } else if (hash === 'timelineList') {
+        setCurrentPage('timelineList')
+      } else if (hash === 'pdfDisplay') {
+        setCurrentPage('pdfDisplay')
       } else {
         setCurrentPage('user')
       }
     }
 
-    handleHashChange() // 初期読み込み時に実行
+    handleHashChange()
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [isInitialized])
@@ -71,31 +74,36 @@ function App() {
     <div className="app">
       <Header currentPage={currentPage} onPageChange={setCurrentPage} />
       <main className="main-content">
+        {/* ページ1: ユーザーログイン */}
         {currentPage === 'user' && (
-          <UserPage 
-            userId={userId} 
-            setUserId={setUserId} 
+          <UserPage
+            userId={userId}
+            setUserId={setUserId}
             setToken={setToken}
             setUserInfo={setUserInfo}
           />
         )}
+
+        {/* ページ2: インタビュー（19問） */}
         {currentPage === 'interview' && userId && token && (
-          <InterviewPage 
-            userId={userId} 
+          <InterviewPage
+            userId={userId}
             token={token}
             userInfo={userInfo}
             onCorrectionStart={(conversation, answersWithPhotos) => {
               setInterviewConversation(conversation);
               setInterviewAnswersWithPhotos(answersWithPhotos);
-              setCurrentPage('correction');
+              window.location.hash = 'correction';
             }}
             onAIGenerationStart={(answersWithPhotos) => {
               console.log('🚀 AIGenerationPage へ遷移:', answersWithPhotos.length, '件の回答');
               setInterviewAnswersWithPhotos(answersWithPhotos);
-              setCurrentPage('aiGeneration');
+              window.location.hash = 'aiGeneration';
             }}
           />
         )}
+
+        {/* ページ3: AI自動生成（timeline + biography作成） */}
         {currentPage === 'aiGeneration' && userId && token && userInfo && (
           <AIGenerationPage
             userId={userId}
@@ -103,24 +111,53 @@ function App() {
             answersWithPhotos={interviewAnswersWithPhotos}
             userInfo={userInfo}
             onComplete={() => {
-              console.log('✅ AI生成完了、CorrectedTextPageへ遷移');
-              setCurrentPage('corrected');
+              console.log('✅ AI生成完了 → PDFDisplay へ');
+              window.location.hash = 'pdfDisplay';  // timelineList ではなく pdfDisplay へ
             }}
           />
         )}
+
+        {/* ページ4: テキスト修正 */}
         {currentPage === 'correction' && userId && token && (
-          <TextCorrectionPage 
-            userId={userId} 
-            token={token} 
-            conversation={interviewConversation} 
-            answersWithPhotos={interviewAnswersWithPhotos} 
-            onComplete={() => setCurrentPage('corrected')} 
+          <TextCorrectionPage
+            userId={userId}
+            token={token}
+            conversation={interviewConversation}
+            answersWithPhotos={interviewAnswersWithPhotos}
+            onComplete={() => {
+              window.location.hash = 'corrected';
+            }}
           />
         )}
+
+        {/* ページ5: 修正済みテキスト確認・修正 */}
         {currentPage === 'corrected' && userId && token && (
-          <CorrectedTextPage userId={userId} token={token} />
+          <CorrectedTextPage
+            userId={userId}
+            token={token}
+            onTimelineListStart={() => {
+              console.log('📋 CorrectedTextPage スキップ → TimelineListPage へ');
+              window.location.hash = 'timelineList';  // そのまま timelineList へ
+            }}
+          />
         )}
-        {currentPage === 'publisher' && <PublisherPage />}
+        {/* ページ6: 人生年表一覧（追加・編集・削除） */}
+        {currentPage === 'timelineList' && userId && token && (
+          <TimelineListPage
+            userId={userId}
+            token={token}
+            userInfo={userInfo || { name: '（名前未設定）', age: 0 }}
+            onComplete={() => {
+              console.log('✅ 年表確認完了 → PDFDisplay へ遷移');
+              window.location.hash = 'pdfDisplay';
+            }}
+          />
+        )}
+
+        {/* ページ7: PDF表示・ダウンロード */}
+        {currentPage === 'pdfDisplay' && userId && token && (
+          <PDFDisplayPage userId={userId} token={token} />
+        )}
       </main>
     </div>
   )

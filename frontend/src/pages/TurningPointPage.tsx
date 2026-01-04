@@ -111,45 +111,99 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
     setTurningPoints(turningPoints.filter((_, i) => i !== index));
   };
 
+  // ✅ 修正: 重複送信防止 + エラーハンドリング強化
   const handleSave = async () => {
+    // バリデーション
     if (turningPoints.some((tp) => !tp.event_title || !tp.event_description)) {
       alert('全てのターニングポイントを入力してください');
       return;
     }
 
-    setSaving(true);
-    try {
-      for (const tp of turningPoints) {
-        const response = await fetch(`${API_URL}/api/timeline`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            age: tp.age ? parseInt(tp.age) : null,
-            year: tp.year ? parseInt(tp.year) : null,
-            month: tp.month ? parseInt(tp.month) : null,
-            turning_point: tp.turning_point || null,
-            stage: 'turning_points',
-            event_title: tp.event_title,
-            event_description: tp.event_description,
-          }),
-        });
+    // 🔴 既に保存中の場合は処理を中止
+    if (saving) {
+      console.warn('⚠️ Already saving, ignoring duplicate save attempt');
+      return;
+    }
 
-        if (!response.ok) {
-          throw new Error('保存に失敗しました');
+    setSaving(true);
+    let successCount = 0;
+    let failureCount = 0;
+
+    try {
+      // ✅ 修正: 全体の最初に saving = true をログ出力
+      console.log('💾 Starting timeline save:', {
+        turningPointCount: turningPoints.length,
+        timestamp: new Date().toISOString()
+      });
+
+      for (let idx = 0; idx < turningPoints.length; idx++) {
+        const tp = turningPoints[idx];
+        
+        try {
+          console.log(`📤 Sending timeline ${idx + 1}/${turningPoints.length}:`, {
+            event_title: tp.event_title,
+            year: tp.year
+          });
+
+          const response = await fetch(`${API_URL}/api/timeline`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              age: tp.age && !isNaN(parseInt(tp.age)) ? parseInt(tp.age) : null,
+              year: tp.year && !isNaN(parseInt(tp.year)) ? parseInt(tp.year) : null,  // ✅ NaN チェック追加
+              month: tp.month && !isNaN(parseInt(tp.month)) ? parseInt(tp.month) : null,  // ✅ NaN チェック追加
+              turning_point: tp.turning_point || null,
+              stage: 'turning_points',
+              event_title: tp.event_title,
+              event_description: tp.event_description,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error(`❌ Failed to save turning point ${idx + 1}:`, {
+              status: response.status,
+              error: errorData
+            });
+            failureCount++;
+          } else {
+            const data = await response.json();
+            console.log(`✅ Timeline ${idx + 1} saved successfully:`, {
+              id: data.data?.id,
+              eventTitle: data.data?.event_title
+            });
+            successCount++;
+          }
+        } catch (fetchError) {
+          console.error(`❌ Network error for timeline ${idx + 1}:`, fetchError);
+          failureCount++;
+        }
+
+        // ✅ 修正: リクエスト間に小さな遅延を挿入（重複実行を防止）
+        if (idx < turningPoints.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
-      alert('ターニングポイントが保存されました！');
-      onComplete();
+      // 結果判定
+      if (failureCount > 0) {
+        alert(`${successCount}個が保存されました。${failureCount}個の保存に失敗しました。`);
+      } else {
+        alert(`✅ すべての${successCount}個のターニングポイントが保存されました！`);
+        // 成功時のみ onComplete を実行
+        onComplete();
+      }
+
     } catch (error) {
-      console.error('保存エラー:', error);
-      alert('保存に失敗しました');
+      console.error('❌ Unexpected error during save:', error);
+      alert('保存中に予期しないエラーが発生しました');
     } finally {
       setSaving(false);
+      console.log('✅ Save operation completed', { successCount, failureCount });
     }
   };
 
@@ -313,6 +367,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                   placeholder="例：30"
                   value={tp.age}
                   onChange={(e) => handleInputChange(index, 'age', e.target.value)}
+                  disabled={saving}
                   style={styles.input}
                 />
               </div>
@@ -331,6 +386,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                 <select
                   value={tp.month}
                   onChange={(e) => handleInputChange(index, 'month', e.target.value)}
+                  disabled={saving}
                   style={styles.input}
                 >
                   <option value="">選択してください</option>
@@ -350,14 +406,18 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                 placeholder="例：結婚、転職、起業など"
                 value={tp.turning_point}
                 onChange={(e) => handleInputChange(index, 'turning_point', e.target.value)}
+                disabled={saving}
                 style={{ ...styles.input, marginBottom: 0, flex: 1 }}
               />
               <button
                 onClick={() => startVoiceInput(index, 'turning_point')}
+                disabled={saving}
                 style={{
                   ...styles.button,
                   ...styles.voiceButton,
-                  ...(listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
+                  ...(listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? styles.voiceButtonListening : {}),
+                  opacity: saving ? 0.6 : 1,
+                  cursor: saving ? 'not-allowed' : 'pointer'
                 }}
               >
                 🎤 {listeningIndex?.field === 'turning_point' && listeningIndex?.index === index ? '聴取中...' : 'マイク'}
@@ -371,14 +431,18 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                 placeholder="例：結婚、転職、起業など"
                 value={tp.event_title}
                 onChange={(e) => handleInputChange(index, 'event_title', e.target.value)}
+                disabled={saving}
                 style={{ ...styles.input, marginBottom: 0, flex: 1 }}
               />
               <button
                 onClick={() => startVoiceInput(index, 'event_title')}
+                disabled={saving}
                 style={{
                   ...styles.button,
                   ...styles.voiceButton,
-                  ...(listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
+                  ...(listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? styles.voiceButtonListening : {}),
+                  opacity: saving ? 0.6 : 1,
+                  cursor: saving ? 'not-allowed' : 'pointer'
                 }}
               >
                 🎤 {listeningIndex?.field === 'event_title' && listeningIndex?.index === index ? '聴取中...' : 'マイク'}
@@ -393,14 +457,18 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
                 onChange={(e) =>
                   handleInputChange(index, 'event_description', e.target.value.slice(0, 500))
                 }
+                disabled={saving}
                 style={{ ...styles.textarea, marginBottom: 0, flex: 1 }}
               />
               <button
                 onClick={() => startVoiceInput(index, 'event_description')}
+                disabled={saving}
                 style={{
                   ...styles.button,
                   ...styles.voiceButton,
-                  ...(listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? styles.voiceButtonListening : {})
+                  ...(listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? styles.voiceButtonListening : {}),
+                  opacity: saving ? 0.6 : 1,
+                  cursor: saving ? 'not-allowed' : 'pointer'
                 }}
               >
                 🎤 {listeningIndex?.field === 'event_description' && listeningIndex?.index === index ? '聴取中...' : 'マイク'}
@@ -413,7 +481,8 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
             {turningPoints.length > 1 && (
               <button
                 onClick={() => removeTurningPoint(index)}
-                style={{ ...styles.button, ...styles.removeButton }}
+                disabled={saving}
+                style={{ ...styles.button, ...styles.removeButton, opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
               >
                 この転機を削除
               </button>
@@ -423,7 +492,8 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
 
         <button
           onClick={addTurningPoint}
-          style={{ ...styles.button, ...styles.addButton }}
+          disabled={saving}
+          style={{ ...styles.button, ...styles.addButton, opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
         >
           + 転機を追加
         </button>
@@ -435,6 +505,7 @@ export default function TurningPointPage({ userId, token, birthDate, onComplete 
             ...styles.button,
             ...styles.saveButton,
             opacity: saving ? 0.6 : 1,
+            cursor: saving ? 'not-allowed' : 'pointer'
           }}
         >
           {saving ? '保存中...' : '保存して次へ'}

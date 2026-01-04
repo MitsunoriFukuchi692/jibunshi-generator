@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { API_URL } from '../config';
 
 interface Answer {
@@ -10,7 +10,8 @@ interface Answer {
   }>;
   year?: string;
   month?: string;
-  isImportant?: boolean;  // ✅ 新: 重要な出来事フラグ
+  eventTitle?: string;  // ✅ 新: イベントのタイトル
+  isImportant?: boolean;  // ✅ 新: 重要なできごとフラグ
 }
 
 export default function AIGenerationPage({
@@ -29,10 +30,61 @@ export default function AIGenerationPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const hasStarted = useRef(false);  // ✅ 修正: 2重実行防止フラグ
 
   useEffect(() => {
-    generateAIBiography();
-  }, []);
+    // ✅ 修正: 既に実行中なら何もしない
+    if (hasStarted.current) {
+      console.warn('⚠️ generateAIBiography は既に実行中です。2重実行を防止します。');
+      return;
+    }
+
+    hasStarted.current = true;  // ← フラグを立てる
+    deleteOldDataAndGenerate();
+  }, []);  // ← 依存配列を空にして1回だけ実行
+
+  // ✅ 新: 過去データ削除 → AI生成を実行
+  const deleteOldDataAndGenerate = async () => {
+    try {
+      console.log('🗑️ ステップ0: 過去データを削除中...');
+
+      const apiUrl = API_URL;
+      if (!apiUrl) throw new Error('API URLが設定されていません');
+
+      // ✅ 過去データ削除リクエスト
+      const deleteResponse = await fetch(`${apiUrl}/api/cleanup/old-data`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          user_id: userId
+        })
+      });
+
+      if (deleteResponse.ok) {
+        const deleteData = await deleteResponse.json();
+        console.log('✅ 過去データ削除完了:', deleteData.message);
+        console.log('削除内容:', {
+          timelineDeleted: deleteData.timelineDeleted || 0,
+          biographyDeleted: deleteData.biographyDeleted || 0,
+          timelineMetadataDeleted: deleteData.timelineMetadataDeleted || 0
+        });
+      } else {
+        console.warn('⚠️ 過去データ削除に失敗しましたが続行します...');
+      }
+
+      // ✅ 過去データ削除後、AI生成を開始
+      await generateAIBiography();
+
+    } catch (error) {
+      console.error('❌ データ削除エラー:', error);
+      const errorMessage = error instanceof Error ? error.message : 'データ削除に失敗しました';
+      setError(errorMessage);
+      setLoading(false);
+    }
+  };
 
   const generateAIBiography = async () => {
     try {
@@ -44,14 +96,14 @@ export default function AIGenerationPage({
       const apiUrl = API_URL;
       if (!apiUrl) throw new Error('API URLが設定されていません');
 
-      // ✅ ステップ1: 重要な出来事を抽出
-      console.log('🔍 重要な出来事を抽出...');
+      // ✅ ステップ1: 重要なできごとを抽出
+      console.log('🔍 重要なできごとを抽出...');
       const importantEvents = (answersWithPhotos || []).filter((ans: Answer) => ans.isImportant);
       const allResponses = (answersWithPhotos || [])
         .map((ans: Answer) => ans.text || '')
         .filter(Boolean);
 
-      console.log('⭐ 重要な出来事数:', importantEvents.length);
+      console.log('⭐ 重要なできごと数:', importantEvents.length);
       console.log('📝 全回答テキスト数:', allResponses.length);
 
       if (allResponses.length === 0) {
@@ -60,7 +112,7 @@ export default function AIGenerationPage({
 
       setProgress(20);
 
-      // ステップ2: AI編集エンドポイントを呼び出し（全回答をまとめた自分史）
+      // ✅ ステップ2: AI編集エンドポイントを呼び出し（全回答をまとめた自分史）
       console.log('🤖 AI編集APIにリクエスト送信...');
       const editResponse = await fetch(`${apiUrl}/api/ai/edit-text`, {
         method: 'POST',
@@ -91,22 +143,55 @@ export default function AIGenerationPage({
 
       setProgress(70);
 
-      // ✅ ステップ3: 重要な出来事ごとにタイムラインレコードを作成
-      console.log('💾 重要な出来事をタイムラインに保存...');
-      
+      // ✅ ステップ3: biography を保存（最初に1回だけ）
+      // 重要: これは「全体の自分史」を保存するもので、timeline とは別
+      console.log('🔹 biography リクエストを送信:', {
+        url: `${apiUrl}/api/biography`,
+        token: !!token
+      });
+
+      const biographyResponse = await fetch(`${apiUrl}/api/biography`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          edited_content: editedContent,
+          ai_summary: editedContent
+        })
+      });
+
+      if (!biographyResponse.ok) {
+        const errorData = await biographyResponse.json();
+        throw new Error(`Biography save error: ${biographyResponse.status} - ${errorData.error || 'Unknown error'}`);
+      }
+
+      const biographyData = await biographyResponse.json();
+      console.log('✅ Biography 保存完了 - ID:', biographyData.data?.id || biographyData.id);
+
+      setProgress(75);
+
+      // ✅ ステップ4: 重要なできごとごとに timeline レコードを作成
+      console.log('📚 重要なできごとをタイムラインに保存...');
+
       let savedCount = 0;
+      const timelineIds: number[] = [];  // ✅ 新: timeline_id を保存
+
       for (let i = 0; i < importantEvents.length; i++) {
         const event = importantEvents[i];
-        
+
         // 年月データを処理（曖昧な年もOK）
-        let eventYear: string | number | null = event.year || null;
+        let eventYear: string | number | null = event.year ? String(event.year).trim() : null;
         let eventMonth: number | null = null;
 
-        if (eventYear) {
-          eventYear = String(eventYear).trim();
-          if (/^\d+$/.test(eventYear)) {
-            eventYear = parseInt(eventYear, 10);
+        if (eventYear && eventYear !== 'undefined' && eventYear !== 'NaN') {
+          if (/^\d+$/.test(eventYear as string)) {
+            eventYear = parseInt(eventYear as string, 10);
           }
+        } else {
+          eventYear = null;
         }
 
         if (event.month) {
@@ -119,9 +204,13 @@ export default function AIGenerationPage({
           }
         }
 
-        console.log(`💾 重要な出来事 ${i + 1}/${importantEvents.length} を保存...`, {
+        // ✅ 修正: 各イベントに異なるタイトルを使用
+        const eventTitle = event.eventTitle || `人生のできごと ${i + 1}`;
+
+        console.log(`📍 重要なできごと ${i + 1}/${importantEvents.length} を保存...`, {
           year: eventYear,
           month: eventMonth,
+          title: eventTitle,
           textLength: event.text?.length || 0
         });
 
@@ -138,10 +227,10 @@ export default function AIGenerationPage({
             month: eventMonth,
             turning_point: null,
             stage: 'interview',
-            event_title: `人生の重要な出来事 ${i + 1}`,
-            event_description: event.text,
-            edited_content: editedContent,  // ✅ 全体の自分史テキストも保存
-            answersWithPhotos: [event],  // 当該イベントの写真のみ
+            event_title: eventTitle,  // ✅ 各イベントのタイトル
+            event_description: event.text,  // ✅ 各イベントの説明（回答テキスト）
+            // ❌ edited_content は含めない（biography で既に保存済み）
+            answersWithPhotos: event.photos && event.photos.length > 0 ? [{ ...event, photos: event.photos }] : [],  // ✅ photos を含める！
             isAutoGenerated: true
           })
         });
@@ -152,15 +241,62 @@ export default function AIGenerationPage({
         }
 
         const timelineData = await timelineResponse.json();
-        console.log(`✅ 重要な出来事 ${i + 1} 保存完了 - ID:`, timelineData.data?.id);
+        const timelineId = timelineData.data?.id || timelineData.id;
+        console.log(`✅ 重要なできごと ${i + 1} 保存完了 - ID:`, timelineId);
+
+        // ✅ 新: timeline_id を保存（後で timeline_metadata を作成する際に使用）
+        if (timelineId) {
+          timelineIds.push(timelineId);
+        }
+
         savedCount++;
       }
 
-      console.log(`✅ ${savedCount}個の重要な出来事をタイムラインに保存完了`);
+      console.log(`✅ ${savedCount}個の重要なできごとをタイムラインに保存完了`);
+
+      setProgress(85);
+
+      // ✅ ステップ5: timeline_metadata を自動作成（JSON パースエラーを防ぐ）
+      console.log('📊 timeline_metadata を作成中...');
+
+      try {
+        // 重要なできごとのタイトル一覧を作成
+        const importantEventsTitles = importantEvents.map((event, idx) =>
+          event.eventTitle || `人生のできごと ${idx + 1}`
+        );
+
+        for (let i = 0; i < timelineIds.length; i++) {
+          const timelineId = timelineIds[i];
+
+          const metadataResponse = await fetch(`${apiUrl}/api/timeline/${timelineId}/metadata`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              important_events: JSON.stringify(importantEventsTitles),  // ✅ JSON文字列として保存
+              turning_points: JSON.stringify([]),  // 初期値は空
+              custom_metadata: {}
+            })
+          });
+
+          if (!metadataResponse.ok) {
+            console.warn(`⚠️ timeline_metadata 作成失敗 (timeline_id: ${timelineId})`);
+            // エラーでも続行
+          } else {
+            console.log(`✅ timeline_metadata 作成完了 - timeline_id: ${timelineId}`);
+          }
+        }
+      } catch (metadataError) {
+        console.warn('⚠️ timeline_metadata 作成エラー (non-fatal):', metadataError);
+        // metadata 作成失敗はエラーにしない
+      }
 
       setProgress(100);
 
-      // ステップ4: 完了処理
+      // ✅ ステップ6: 完了処理
       setTimeout(() => {
         console.log('🎉 AI作成完了 - 修正ページへ遷移');
         onComplete();
@@ -295,9 +431,13 @@ export default function AIGenerationPage({
           </div>
           <button
             style={styles.retryButton}
-            onClick={generateAIBiography}
+            onClick={() => {
+              setError(null);
+              setProgress(0);
+              deleteOldDataAndGenerate();
+            }}
           >
-            🔄 もう一度試す
+            📄 もう一度試す
           </button>
         </div>
       </div>
@@ -335,6 +475,14 @@ export default function AIGenerationPage({
 
         <div style={styles.steps}>
           <div style={styles.step}>
+            <div style={styles.stepNumber}>0</div>
+            <div style={styles.stepText}>
+              🗑️ 過去データを削除中
+              {progress >= 10 ? ' ✅' : ''}
+            </div>
+          </div>
+
+          <div style={styles.step}>
             <div style={styles.stepNumber}>1</div>
             <div style={styles.stepText}>
               📄 回答テキストを整理中
@@ -354,6 +502,14 @@ export default function AIGenerationPage({
             <div style={styles.stepNumber}>3</div>
             <div style={styles.stepText}>
               💾 データベースに保存中
+              {progress >= 85 ? ' ✅' : ''}
+            </div>
+          </div>
+
+          <div style={styles.step}>
+            <div style={styles.stepNumber}>4</div>
+            <div style={styles.stepText}>
+              📊 メタデータを作成中
               {progress >= 100 ? ' ✅' : ''}
             </div>
           </div>
