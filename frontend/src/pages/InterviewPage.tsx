@@ -17,6 +17,7 @@ interface AnswerWithPhotos {
   photos: SelectedPhoto[];
   year?: string;
   month?: string;
+  eventAge?: number;  // ✅ 修正：何歳時の出来事
   eventTitle?: string;  // ✅ 新: 出来事のタイトル
   isImportant?: boolean;  // ✅ 新: 重要な出来事かどうか
 }
@@ -75,14 +76,14 @@ const INTERVIEW_QUESTIONS = [
   "これからの時間の中で、挑戦したいことはありますか？",
 ];
 
-export default function InterviewPage({ 
-  userId, 
+export default function InterviewPage({
+  userId,
   token,
   userInfo,
   onCorrectionStart,
   onAIGenerationStart
-}: { 
-  userId: number; 
+}: {
+  userId: number;
   token: string | null;
   userInfo?: { name: string; age: number };
   onCorrectionStart?: (conversation: Message[], answersWithPhotos: AnswerWithPhotos[]) => void;
@@ -96,6 +97,7 @@ export default function InterviewPage({
   const [eventYear, setEventYear] = useState<string>('');
   const [eventMonth, setEventMonth] = useState<string>('');
   const [eventTitle, setEventTitle] = useState<string>('');
+  const [eventAge, setEventAge] = useState<string>('');  // ✅ 修正：何歳時の出来事
   const [isImportantEvent, setIsImportantEvent] = useState(false);  // ✅ 新: 重要な出来事フラグ
   const [availablePhotos, setAvailablePhotos] = useState<Photo[]>([]);
   const [listening, setListening] = useState(false);
@@ -182,7 +184,7 @@ export default function InterviewPage({
           if (response.ok) {
             const serverSession = await response.json();
             console.log('✅ サーバーレスポンス受け取り:', serverSession);
-            
+
             if (serverSession && serverSession.currentQuestionIndex !== undefined && serverSession.currentQuestionIndex > 0) {
               console.log('✅ サーバーからセッション復元成功:', {
                 conversation: serverSession.conversation.length,
@@ -224,7 +226,7 @@ export default function InterviewPage({
       if (saved) {
         try {
           const session: InterviewSession = JSON.parse(saved);
-          
+
           // ✅ バージョンチェック - 古いセッションは削除
           if (session.version !== SESSION_VERSION) {
             console.warn('⚠️ セッションバージョン不一致 - 古いセッションを削除します');
@@ -300,7 +302,7 @@ export default function InterviewPage({
       timestamp: Date.now(),
       version: SESSION_VERSION  // ✅ バージョンを含める
     };
-    
+
     try {
       localStorage.setItem(`interview_session_${userId}`, JSON.stringify(session));
       console.log('✅ セッション保存完了');
@@ -381,7 +383,7 @@ export default function InterviewPage({
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'ja-JP';
-    
+
     // ✅ 修正: 複数の音声を継続的に認識
     recognition.continuous = true;   // 複数の音声を認識
     recognition.interimResults = true;  // 途中結果も取得
@@ -394,7 +396,7 @@ export default function InterviewPage({
 
     recognition.onresult = (event: any) => {
       let transcript = '';
-      
+
       // ✅ 修正: isFinal=true（確定した結果）のみを処理
       // これにより、音声認識中の揺らぎを防ぎ、確定した部分だけを追加
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -405,7 +407,7 @@ export default function InterviewPage({
 
       if (transcript) {
         console.log('📝 Transcript (final):', transcript);
-        
+
         // ✅ 修正: setCurrentAnswer で前のテキストを保持
         setCurrentAnswer((prev) => {
           if (prev && prev.trim() !== '') {
@@ -475,7 +477,7 @@ export default function InterviewPage({
     try {
       // ✅ currentPhotos が undefined の場合は空配列に
       const photosToSave = currentPhotos && Array.isArray(currentPhotos) ? currentPhotos : [];
-      
+
       console.log('💾 回答を保存:', {
         questionIndex: currentQuestionIndex,
         isImportant: isImportantEvent,
@@ -485,16 +487,17 @@ export default function InterviewPage({
       });
 
       // ✅ 重要な出来事の場合だけ年月を記録、そうでなければ記録しない
-      const newAnswerWithPhotos: AnswerWithPhotos = {
+      const newAnswer: AnswerWithPhotos = {
         text: currentAnswer,
-        photos: photosToSave,  // ✅ undefined → [] に統一
-        year: isImportantEvent ? (eventYear || undefined) : undefined,
-        month: isImportantEvent ? (eventMonth || undefined) : undefined,
-        eventTitle: isImportantEvent ? (eventTitle || undefined) : undefined,  // ✅ eventTitle を含める
-        isImportant: isImportantEvent,  // ✅ 重要フラグを記録
+        photos: currentPhotos,
+        year: eventYear || 'なし',
+        month: eventMonth || null,
+        eventAge: eventAge ? parseInt(eventAge) : undefined,  // ✅ この行を追加
+        eventTitle: eventTitle || undefined,
+        isImportant: isImportantEvent
       };
 
-      const newAnswersWithPhotos = [...answersWithPhotos, newAnswerWithPhotos];
+     const newAnswersWithPhotos = [...answersWithPhotos, newAnswer];
       setAnswersWithPhotos(newAnswersWithPhotos);
 
       // 会話に追加
@@ -511,6 +514,7 @@ export default function InterviewPage({
         setEventYear('');
         setEventMonth('');
         setEventTitle('');  // ✅ eventTitle をリセット
+        setEventAge('');  // ✅ 修正：eventAge をリセット
         setIsImportantEvent(false);  // ✅ 重要フラグをリセット
         setUnsavedChanges(false);
 
@@ -577,7 +581,7 @@ export default function InterviewPage({
     try {
       setProcessing(true);
       const apiUrl = API_URL;
-      
+
       console.log('💾 サーバーにセッション保存開始:', {
         userId,
         questionIndex: currentQuestionIndex,
@@ -905,7 +909,7 @@ export default function InterviewPage({
               <strong>作成者情報:</strong> {userInfo?.name || '未設定'} （{userInfo?.age || '未設定'}歳）
             </p>
             <p style={{ marginBottom: '15px' }}>
-              <strong>質問数:</strong> {INTERVIEW_QUESTIONS.length}問中 {currentQuestionIndex}問完了
+              <strong>質問数:</strong> {INTERVIEW_QUESTIONS.length}問中 {answersWithPhotos.length}問完了
             </p>
             <p>
               <strong>回答数:</strong> {answersWithPhotos.length}個の回答を記録しました
@@ -915,7 +919,13 @@ export default function InterviewPage({
           <button
             onClick={() => {
               if (onAIGenerationStart) {
-                onAIGenerationStart(finalAnswersWithPhotos || answersWithPhotos);
+                // ✅ 修正: answersWithPhotos に正確な text フィールドがあることを確認してから渡す
+                console.log('📊 AI生成に渡すanswersWithPhotos:', {
+                  count: answersWithPhotos.length,
+                  sample: answersWithPhotos[0],
+                  allHaveText: answersWithPhotos.every((a: any) => a.text && a.text.trim().length > 0)
+                });
+                onAIGenerationStart(answersWithPhotos);
               }
             }}
             style={{
@@ -972,46 +982,46 @@ export default function InterviewPage({
             </div>
           )}
 
-            <button
-              onClick={() => setShowQuestionsList(!showQuestionsList)}
-              style={{
-                ...styles.button,
-                backgroundColor: '#95a5a6',
-                color: 'white',
-                marginBottom: '20px',
-                width: '100%',
-              }}
-            >
-              {showQuestionsList ? '質問リストを非表示' : '質問リストを表示'}
-            </button>
+          <button
+            onClick={() => setShowQuestionsList(!showQuestionsList)}
+            style={{
+              ...styles.button,
+              backgroundColor: '#95a5a6',
+              color: 'white',
+              marginBottom: '20px',
+              width: '100%',
+            }}
+          >
+            {showQuestionsList ? '質問リストを非表示' : '質問リストを表示'}
+          </button>
 
-            {showQuestionsList && (
-              <div style={styles.questionsList}>
-                {INTERVIEW_QUESTIONS.map((q, idx) => (
-                  <div key={idx} style={styles.questionItem}>
-                    <strong>Q{idx + 1}:</strong> {q}
-                  </div>
-                ))}
-              </div>
-            )}
+          {showQuestionsList && (
+            <div style={styles.questionsList}>
+              {INTERVIEW_QUESTIONS.map((q, idx) => (
+                <div key={idx} style={styles.questionItem}>
+                  <strong>Q{idx + 1}:</strong> {q}
+                </div>
+              ))}
+            </div>
+          )}
 
-            <button
-              onClick={startInterview}
-              disabled={processing}
-              style={{
-                ...styles.button,
-                ...styles.startButton,
-                width: '100%',
-                opacity: processing ? 0.6 : 1,
-                fontSize: '18px',
-              }}
-            >
-              {processing ? '聞き取り開始中...' : '聞き取りを開始'}
-            </button>
-          </div>
+          <button
+            onClick={startInterview}
+            disabled={processing}
+            style={{
+              ...styles.button,
+              ...styles.startButton,
+              width: '100%',
+              opacity: processing ? 0.6 : 1,
+              fontSize: '18px',
+            }}
+          >
+            {processing ? '聞き取り開始中...' : '聞き取りを開始'}
+          </button>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -1090,9 +1100,9 @@ export default function InterviewPage({
 
               {/* ✅ 重要な出来事の場合だけ年月入力を表示 */}
               {isImportantEvent && (
-                <div style={{ 
-                  backgroundColor: '#ecf0f1', 
-                  padding: '15px', 
+                <div style={{
+                  backgroundColor: '#ecf0f1',
+                  padding: '15px',
                   borderRadius: '4px',
                   marginBottom: '15px'
                 }}>
@@ -1106,6 +1116,28 @@ export default function InterviewPage({
                     value={eventTitle}
                     onChange={(e) => {
                       setEventTitle(e.target.value);
+                      setUnsavedChanges(true);
+                    }}
+                    style={{
+                      ...styles.yearMonthInput,
+                      width: '100%',
+                      marginBottom: '15px'
+                    }}
+                  />
+
+                  {/* ✅ 修正：何歳時の出来事入力フィールド */}
+                  <label style={styles.textInputLabel}>✨ 何歳時の出来事ですか？</label>
+                  <p style={{ fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>
+                    例：25歳、30歳。年が不確かな時は年齢で入力してください。
+                  </p>
+                  <input
+                    type="number"
+                    placeholder="例：25、30"
+                    min="0"
+                    max="150"
+                    value={eventAge}
+                    onChange={(e) => {
+                      setEventAge(e.target.value);
                       setUnsavedChanges(true);
                     }}
                     style={{
