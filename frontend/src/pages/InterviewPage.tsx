@@ -519,7 +519,8 @@ export default function InterviewPage({
         setUnsavedChanges(false);
 
         // ✅ 状態更新後にセッション保存（重要）
-        setTimeout(() => {
+        // ローカルに保存した後、サーバーにも自動保存
+        setTimeout(async () => {
           const SESSION_VERSION = 2;
           const sessionToSave: InterviewSession = {
             conversation: newConversation,
@@ -529,8 +530,37 @@ export default function InterviewPage({
             version: SESSION_VERSION
           };
           try {
+            // ① ローカルストレージに保存
             localStorage.setItem(`interview_session_${userId}`, JSON.stringify(sessionToSave));
-            console.log('✅ セッション更新保存');
+            console.log('✅ ローカルストレージにセッション保存');
+
+            // ② 🔥 重要：サーバーにも保存（データ永続化）
+            try {
+              const apiUrl = API_URL;
+              const serverResponse = await fetch(`${apiUrl}/api/interview-session/save`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  user_id: userId,
+                  currentQuestionIndex: currentQuestionIndex + 1,
+                  conversation: newConversation,
+                  answersWithPhotos: newAnswersWithPhotos,
+                  timestamp: Date.now()
+                })
+              });
+
+              if (serverResponse.ok) {
+                console.log('✅ サーバーにセッション自動保存成功');
+              } else {
+                console.warn('⚠️ サーバー保存失敗（非同期で継続）:', serverResponse.status);
+              }
+            } catch (serverError) {
+              // サーバー保存失敗しても、ローカルには保存されているので処理は続行
+              console.warn('⚠️ サーバー保存エラー（ローカルは保存済）:', serverError);
+            }
           } catch (e) {
             console.error('❌ セッション保存失敗:', e);
           }

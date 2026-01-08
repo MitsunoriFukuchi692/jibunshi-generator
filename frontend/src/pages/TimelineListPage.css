@@ -1,466 +1,320 @@
-import { useEffect, useState } from 'react'
+/* ============================================
+   TimelineListPage CSS
+   修正内容：CSSクラスを定義
+   ============================================ */
 
-interface TimelineEvent {
-  id: number
-  year: number
-  month: number
-  eventTitle: string
-  description: string
-  photoUrl?: string
+.timeline-list-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-interface TimelineListPageProps {
-  userId: number
-  token: string
-  userInfo: { name: string; age: number }
-  onComplete: () => void
+.timeline-list-page h1 {
+  color: #2c3e50;
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 24px;
 }
 
-const styles = {
-  container: {
-    maxWidth: '900px',
-    margin: '0 auto',
-    padding: '20px',
-    backgroundColor: '#f8f9fa',
-    minHeight: '100vh',
-  } as const,
-  
-  title: {
-    color: '#2c3e50',
-    textAlign: 'center' as const,
-    marginBottom: '30px',
-    fontSize: '24px',
-  },
-
-  infoBox: {
-    backgroundColor: 'white',
-    padding: '15px',
-    borderRadius: '8px',
-    marginBottom: '20px',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-  },
-
-  infoText: {
-    margin: '0',
-    color: '#34495e',
-    fontSize: '14px',
-  },
-
-  errorMessage: {
-    backgroundColor: '#f8d7da',
-    color: '#721c24',
-    padding: '12px',
-    borderRadius: '4px',
-    marginBottom: '20px',
-    border: '1px solid #f5c6cb',
-  },
-
-  timeline: {
-    marginBottom: '30px',
-  },
-
-  noEvents: {
-    textAlign: 'center' as const,
-    color: '#7f8c8d',
-    padding: '40px 20px',
-    backgroundColor: 'white',
-    borderRadius: '8px',
-  },
-
-  card: {
-    backgroundColor: 'white',
-    padding: '20px',
-    marginBottom: '15px',
-    borderRadius: '8px',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-    borderLeft: '4px solid #3498db',
-  },
-
-  eventHeader: {
-    marginBottom: '15px',
-  },
-
-  eventTitle: {
-    margin: '0',
-    color: '#2c3e50',
-    fontSize: '16px',
-  },
-
-  eventContent: {
-    margin: '15px 0',
-    color: '#34495e',
-    lineHeight: '1.6',
-  },
-
-  eventImage: {
-    maxWidth: '100%',
-    height: 'auto',
-    marginTop: '10px',
-    borderRadius: '4px',
-  },
-
-  editForm: {
-    padding: '20px',
-    backgroundColor: '#f9f9f9',
-    borderRadius: '4px',
-  },
-
-  formRow: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '15px',
-    marginBottom: '15px',
-  },
-
-  formGroup: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-  },
-
-  label: {
-    marginBottom: '5px',
-    color: '#2c3e50',
-    fontWeight: 'bold' as const,
-    fontSize: '13px',
-  },
-
-  input: {
-    padding: '10px',
-    border: '1px solid #bdc3c7',
-    borderRadius: '4px',
-    fontSize: '14px',
-    fontFamily: 'inherit',
-  },
-
-  textarea: {
-    padding: '10px',
-    border: '1px solid #bdc3c7',
-    borderRadius: '4px',
-    fontSize: '14px',
-    fontFamily: 'inherit',
-    resize: 'vertical' as const,
-    minHeight: '100px',
-  },
-
-  buttonGroup: {
-    display: 'flex',
-    gap: '10px',
-    marginTop: '15px',
-  },
-
-  button: {
-    flex: 1,
-    padding: '10px',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '14px',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-  },
-
-  btnEdit: {
-    backgroundColor: '#3498db',
-    color: 'white',
-  },
-
-  btnDelete: {
-    backgroundColor: '#e74c3c',
-    color: 'white',
-  },
-
-  btnSave: {
-    backgroundColor: '#27ae60',
-    color: 'white',
-  },
-
-  btnCancel: {
-    backgroundColor: '#95a5a6',
-    color: 'white',
-  },
-
-  actionButtons: {
-    marginBottom: '20px',
-  },
-
-  btnAddEvent: {
-    width: '100%',
-    padding: '12px',
-    backgroundColor: '#3498db',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '14px',
-    cursor: 'pointer',
-    transition: 'background-color 0.2s ease',
-  },
-
-  navigationButtons: {
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'flex-end' as const,
-  },
-
-  btnNext: {
-    padding: '12px 24px',
-    backgroundColor: '#e74c3c',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '14px',
-    cursor: 'pointer',
-    transition: 'background-color 0.2s ease',
-    minWidth: '200px',
-  },
-
-  loading: {
-    textAlign: 'center' as const,
-    padding: '40px',
-    color: '#7f8c8d',
-  },
+/* 情報ボックス */
+.timeline-info {
+  background-color: white;
+  padding: 15px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-export default function TimelineListPage({
-  userId,
-  token,
-  userInfo,
-  onComplete
-}: TimelineListPageProps) {
-  const [events, setEvents] = useState<TimelineEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [formData, setFormData] = useState<Partial<TimelineEvent>>({})
+.timeline-info p {
+  margin: 0;
+  color: #34495e;
+  font-size: 16px;
+}
 
-  useEffect(() => {
-    const fetchTimeline = async () => {
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL}/api/timeline/${userId}`,
-          {
-            headers: { 'Authorization': `Bearer ${token}` }
-          }
-        )
-        if (!response.ok) throw new Error('Timeline fetch failed')
-        const data = await response.json()
-        setEvents(data.events || [])
-      } catch (err) {
-        setError('年表の読み込みに失敗しました')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
+/* エラーメッセージ */
+.error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 12px 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  border: 1px solid #f5c6cb;
+  font-size: 14px;
+}
 
-    fetchTimeline()
-  }, [userId, token])
+/* タイムラインイベント一覧 */
+.timeline-events {
+  margin-bottom: 30px;
+}
 
-  const handleEdit = (event: TimelineEvent) => {
-    setEditingId(event.id)
-    setFormData(event)
+.no-events {
+  text-align: center;
+  color: #7f8c8d;
+  padding: 40px 20px;
+  background-color: white;
+  border-radius: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+
+/* タイムラインカード */
+.timeline-event-card {
+  background-color: white;
+  padding: 20px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #3498db;
+}
+
+/* イベントヘッダー */
+.event-header {
+  margin-bottom: 15px;
+}
+
+.event-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* イベント内容 */
+.event-content {
+  margin: 15px 0;
+  color: #34495e;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.event-content p {
+  margin: 0 0 10px 0;
+}
+
+.event-content img {
+  max-width: 100%;
+  height: auto;
+  margin-top: 10px;
+  border-radius: 4px;
+}
+
+/* 編集フォーム */
+.edit-form {
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  margin-bottom: 5px;
+  color: #2c3e50;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 10px;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
+}
+
+/* ボタングループ */
+.button-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.button-group button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: bold;
+}
+
+/* 編集ボタン */
+.btn-edit {
+  background-color: #3498db;
+  color: white;
+}
+
+.btn-edit:hover {
+  background-color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+}
+
+/* 削除ボタン */
+.btn-delete {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.btn-delete:hover {
+  background-color: #c0392b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(231, 76, 60, 0.3);
+}
+
+/* 保存ボタン */
+.btn-save {
+  background-color: #27ae60;
+  color: white;
+}
+
+.btn-save:hover {
+  background-color: #229954;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3);
+}
+
+/* キャンセルボタン */
+.btn-cancel {
+  background-color: #95a5a6;
+  color: white;
+}
+
+.btn-cancel:hover {
+  background-color: #7f8c8d;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(149, 165, 166, 0.3);
+}
+
+/* アクションボタン */
+.action-buttons {
+  margin-bottom: 20px;
+}
+
+.btn-add-event {
+  width: 100%;
+  padding: 12px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-weight: bold;
+}
+
+.btn-add-event:hover {
+  background-color: #2980b9;
+}
+
+/* ナビゲーションボタン */
+.navigation-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.btn-next {
+  padding: 12px 24px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-weight: bold;
+  min-width: 200px;
+}
+
+.btn-next:hover {
+  background-color: #c0392b;
+}
+
+/* ローディング状態 */
+.page-loading {
+  text-align: center;
+  padding: 40px;
+  color: #7f8c8d;
+  font-size: 16px;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+  .timeline-list-page {
+    padding: 10px;
   }
 
-  const handleCancel = () => {
-    setEditingId(null)
-    setFormData({})
+  .timeline-list-page h1 {
+    font-size: 20px;
+    margin-bottom: 20px;
   }
 
-  const handleSave = async () => {
-    if (!editingId || !formData.year || !formData.month) {
-      setError('年と月は必須です')
-      return
-    }
-
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/timeline/${userId}/${editingId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(formData)
-        }
-      )
-
-      if (!response.ok) throw new Error('Update failed')
-      
-      setEvents(events.map(e => 
-        e.id === editingId ? { ...e, ...formData } as TimelineEvent : e
-      ))
-      setEditingId(null)
-      setFormData({})
-    } catch (err) {
-      setError('保存に失敗しました')
-      console.error(err)
-    }
+  .form-row {
+    grid-template-columns: 1fr;
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('このイベントを削除しますか？')) return
-
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/timeline/${userId}/${id}`,
-        {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        }
-      )
-
-      if (!response.ok) throw new Error('Delete failed')
-      setEvents(events.filter(e => e.id !== id))
-    } catch (err) {
-      setError('削除に失敗しました')
-      console.error(err)
-    }
+  .button-group {
+    flex-direction: column;
   }
 
-  if (loading) {
-    return <div style={styles.loading}>年表を読み込み中...</div>
+  .button-group button {
+    width: 100%;
   }
 
-  return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>📅 人生年表の確認・編集</h1>
-      
-      <div style={styles.infoBox}>
-        <p style={styles.infoText}>{userInfo.name}さんの人生記録（全{events.length}件）</p>
-      </div>
+  .timeline-event-card {
+    padding: 15px;
+  }
 
-      {error && <div style={styles.errorMessage}>{error}</div>}
+  .navigation-buttons {
+    flex-direction: column;
+  }
 
-      <div style={styles.timeline}>
-        {events.length === 0 ? (
-          <p style={styles.noEvents}>年表データがありません</p>
-        ) : (
-          events.map((event) => (
-            <div key={event.id} style={styles.card}>
-              {editingId === event.id ? (
-                <div style={styles.editForm}>
-                  <div style={styles.formRow}>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>年</label>
-                      <input
-                        type="number"
-                        value={formData.year || ''}
-                        onChange={(e) =>
-                          setFormData({ ...formData, year: parseInt(e.target.value) })
-                        }
-                        style={styles.input}
-                      />
-                    </div>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>月</label>
-                      <select
-                        value={formData.month || ''}
-                        onChange={(e) =>
-                          setFormData({ ...formData, month: parseInt(e.target.value) })
-                        }
-                        style={styles.input}
-                      >
-                        <option value="">選択してください</option>
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
-                          <option key={m} value={m}>{m}月</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+  .btn-next {
+    width: 100%;
+    min-width: unset;
+  }
+}
 
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>イベント名</label>
-                    <input
-                      type="text"
-                      placeholder="例：結婚、転職、出生など"
-                      value={formData.eventTitle || ''}
-                      onChange={(e) =>
-                        setFormData({ ...formData, eventTitle: e.target.value })
-                      }
-                      style={styles.input}
-                    />
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>説明</label>
-                    <textarea
-                      placeholder="このイベントについて説明してください"
-                      value={formData.description || ''}
-                      onChange={(e) =>
-                        setFormData({ ...formData, description: e.target.value })
-                      }
-                      style={styles.textarea}
-                    />
-                  </div>
-
-                  <div style={styles.buttonGroup}>
-                    <button 
-                      style={{...styles.button, ...styles.btnSave}}
-                      onClick={handleSave}
-                    >
-                      保存
-                    </button>
-                    <button 
-                      style={{...styles.button, ...styles.btnCancel}}
-                      onClick={handleCancel}
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div style={styles.eventHeader}>
-                    <h3 style={styles.eventTitle}>
-                      {event.year}年
-                      {event.month}月 - {event.eventTitle}
-                    </h3>
-                  </div>
-                  <div style={styles.eventContent}>
-                    <p>{event.description}</p>
-                    {event.photoUrl && (
-                      <img src={event.photoUrl} alt={event.eventTitle} style={styles.eventImage} />
-                    )}
-                  </div>
-                  <div style={styles.buttonGroup}>
-                    <button 
-                      style={{...styles.button, ...styles.btnEdit}}
-                      onClick={() => handleEdit(event)}
-                    >
-                      編集
-                    </button>
-                    <button 
-                      style={{...styles.button, ...styles.btnDelete}}
-                      onClick={() => handleDelete(event.id)}
-                    >
-                      削除
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-
-      <div style={styles.actionButtons}>
-        <button 
-          style={styles.btnAddEvent}
-          onClick={() => {
-            alert('新規イベント追加機能は別ページで実装予定です');
-          }}
-        >
-          + 新しいイベントを追加
-        </button>
-      </div>
-
-      <div style={styles.navigationButtons}>
-        <button 
-          style={styles.btnNext}
-          onClick={onComplete}
-        >
-          PDFを作成 →
-        </button>
-      </div>
-    </div>
-  )
+/* 高齢者向けの大きなフォント */
+@media (prefers-reduced-motion: no-preference) {
+  .button-group button,
+  .btn-add-event,
+  .btn-next {
+    min-height: 44px;
+    font-size: 15px;
+  }
 }

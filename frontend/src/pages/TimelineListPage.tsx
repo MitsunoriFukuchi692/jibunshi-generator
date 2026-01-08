@@ -3,8 +3,9 @@ import './TimelineListPage.css'
 
 interface TimelineEvent {
   id: number
-  year: number
-  month: number
+  year: number | null
+  month: number | null
+  age?: number
   eventTitle: string
   description: string
   photoUrl?: string
@@ -30,33 +31,49 @@ export default function TimelineListPage({
   const [formData, setFormData] = useState<Partial<TimelineEvent>>({})
 
   // 年表データを取得
-  // 年表データを取得
   useEffect(() => {
     const fetchTimeline = async () => {
       try {
-        const apiBaseUrl = 'http://localhost:5000'
-        const url = apiBaseUrl + '/api/timeline/user/2'
+        // ✅ 修正：apiBaseUrl の代わりに import.meta.env.VITE_API_BASE_URL を使用
+        // ✅ 修正：'/api/timeline/user/2' から '/api/timeline/user/${userId}' に変更
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+        const url = `${apiBaseUrl}/api/timeline/user/${userId}`
+        
+        console.log('📊 Fetching timeline from:', url)
+        
         const response = await fetch(url, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
-        if (!response.ok) throw new Error('Timeline fetch failed')
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Timeline fetch failed')
+        }
+        
         const data = await response.json()
+        console.log('✅ Timeline data received:', data)
         setEvents(data.events || [])
       } catch (err) {
-        setError('年表の読み込みに失敗しました')
-        console.error(err)
+        const errorMessage = err instanceof Error ? err.message : '年表の読み込みに失敗しました'
+        setError(errorMessage)
+        console.error('❌ Timeline fetch error:', err)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchTimeline()
+    if (userId && token) {
+      fetchTimeline()
+    }
   }, [userId, token])
 
   // 編集開始
   const handleEdit = (event: TimelineEvent) => {
     setEditingId(event.id)
-    setFormData(event)
+    setFormData({
+      ...event,
+      age: event.age || undefined
+    })
   }
 
   // 編集キャンセル
@@ -67,12 +84,31 @@ export default function TimelineListPage({
 
   // 編集保存
   const handleSave = async () => {
-    if (!editingId || !formData.year || !formData.month) {
-      setError('年と月は必須です')
+    if (!editingId) {
+      setError('編集IDが見つかりません')
+      return
+    }
+
+    if (!formData.age && !formData.year) {
+      setError('年か年齢のいずれかが必須です')
+      return
+    }
+
+    if (!formData.month) {
+      setError('月は必須です')
       return
     }
 
     try {
+      const payload = {
+        ...formData,
+        event_age: formData.age,
+        month: formData.month,
+        eventTitle: formData.eventTitle,
+        event_description: formData.description,
+        event_title: formData.eventTitle
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/timeline/${editingId}`,
         {
@@ -81,19 +117,29 @@ export default function TimelineListPage({
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(formData)
+          body: JSON.stringify(payload)
         }
       )
 
-      if (!response.ok) throw new Error('Update failed')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Update failed')
+      }
 
+      const updatedData = await response.json()
       setEvents(events.map(e =>
-        e.id === editingId ? { ...e, ...formData } as TimelineEvent : e
+        e.id === editingId 
+          ? { 
+              ...e, 
+              ...updatedData.data,
+              age: formData.age
+            } as TimelineEvent 
+          : e
       ))
       setEditingId(null)
       setFormData({})
     } catch (err) {
-      setError('保存に失敗しました')
+      setError(err instanceof Error ? err.message : '保存に失敗しました')
       console.error(err)
     }
   }
@@ -140,25 +186,30 @@ export default function TimelineListPage({
           events.map((event) => (
             <div key={event.id} className="timeline-event-card">
               {editingId === event.id ? (
-                // 編集モード
                 <div className="edit-form">
                   <div className="form-row">
                     <div className="form-group">
-                      <label>年</label>
+                      <label>年齢（何歳時の出来事？）</label>
                       <input
                         type="number"
-                        value={formData.year || ''}
+                        placeholder="例：25、30"
+                        min="0"
+                        max="150"
+                        value={formData.age || ''}
                         onChange={(e) =>
-                          setFormData({ ...formData, year: parseInt(e.target.value) })
+                          setFormData({ ...formData, age: parseInt(e.target.value) || undefined })
                         }
                       />
+                      <small style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '5px' }}>
+                        年齢を入力するとバックエンドで自動計算されます
+                      </small>
                     </div>
                     <div className="form-group">
                       <label>月</label>
                       <select
                         value={formData.month || ''}
                         onChange={(e) =>
-                          setFormData({ ...formData, month: parseInt(e.target.value) })
+                          setFormData({ ...formData, month: parseInt(e.target.value) || null })
                         }
                       >
                         <option value="">選択してください</option>
@@ -199,7 +250,6 @@ export default function TimelineListPage({
                   </div>
                 </div>
               ) : (
-                // 表示モード
                 <>
                   <div className="event-header">
                     <h3>

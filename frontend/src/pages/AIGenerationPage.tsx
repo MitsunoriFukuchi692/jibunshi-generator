@@ -207,6 +207,11 @@ export default function AIGenerationPage({
         // ✅ 修正: 各イベントに異なるタイトルを使用
         const eventTitle = event.eventTitle || `人生のできごと ${i + 1}`;
 
+        // ✅ 修正：誕生イベントの場合、eventAge を 0 に設定
+        if (eventTitle === '誕生' || eventTitle?.includes('生まれた')) {
+          event.eventAge = 0;
+        }
+
         console.log(`📍 重要なできごと ${i + 1}/${importantEvents.length} を保存...`, {
           year: eventYear,
           month: eventMonth,
@@ -222,7 +227,7 @@ export default function AIGenerationPage({
           },
           body: JSON.stringify({
             user_id: userId,
-            age: userInfo?.age || null,
+            event_age: event.eventAge || null,  // ✅ 修正：eventAge を送信
             year: eventYear,
             month: eventMonth,
             turning_point: null,
