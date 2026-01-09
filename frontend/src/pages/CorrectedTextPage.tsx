@@ -146,23 +146,57 @@ export default function CorrectedTextPage({
     setIsSaving(true);
     try {
       const apiUrl = API_URL;
-      const response = await fetch(`${apiUrl}/api/biography/${userId}`, {
-        method: 'PUT',
+
+      console.log('💾 修正内容を保存開始:', {
+        userId,
+        contentLength: editedBiography.length,
+        timestamp: new Date().toISOString()
+      });
+
+      // ✅ 修正：/api/biography (POST) を使用
+      // biography.ts の POST エンドポイントは user_id で biography を自動作成・更新
+      const response = await fetch(`${apiUrl}/api/biography`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ edited_content: editedBiography }),
+        body: JSON.stringify({ 
+          edited_content: editedBiography,
+          ai_summary: editedBiography  // ✅ ai_summary も設定
+        }),
       });
 
-      if (!response.ok) throw new Error('保存に失敗しました');
+      console.log('📡 サーバーレスポンス:', {
+        status: response.status,
+        statusText: response.statusText
+      });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`保存に失敗しました (${response.status}): ${errorData.error || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ サーバー保存成功:', result);
+
+      // ✅ 保存後、画面を再度読み込んでDBから最新データを取得
+      // これにより確実にDBの最新データが表示される
       setBiography(editedBiography);
       setIsEditing(false);
+      
+      // ✅ 成功メッセージを表示
       alert('✅ 修正内容を保存しました');
+      
+      // ✅ 1秒後に全データを再読み込み（確実性を高める）
+      setTimeout(() => {
+        fetchData();
+      }, 1000);
+
     } catch (err) {
-      alert('修正内容の保存に失敗しました');
-      console.error(err);
+      console.error('❌ 修正内容の保存エラー:', err);
+      const errorMessage = err instanceof Error ? err.message : '予期しないエラーが発生しました';
+      alert(`修正内容の保存に失敗しました:\n${errorMessage}\n\nもう一度お試しください。`);
     } finally {
       setIsSaving(false);
     }

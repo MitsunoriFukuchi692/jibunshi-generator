@@ -40,25 +40,40 @@ interface Photo {
 
 // 質問リスト（19個）
 const INTERVIEW_QUESTIONS = [
-  "いつ、どこで生まれましたか？",
-  "どんな環境で育ちましたか？",
-  "小・中・高・大の学校名を覚えている範囲で教えてください。",
-  "学生時代で最も印象に残っている先生や出来事は何ですか？",
+  // 第1部：基本情報（生い立ち）
+  "どこで、いつ生まれましたか？どんな環境で育ちましたか？",
+
+  // 第2部：学生時代
+  "小中高大の学校名を教えてください。",
+  "学生時代で最も印象に残っていることは何ですか？",
   "進路選択の時、どのように決めましたか？",
-  "初めての仕事はどんな仕事でしたか？",
-  "仕事人生でやりがいや、最も大切な経験は何でしたか？",
+
+  // 第3部：仕事・キャリア
+  "初めての仕事について教えてください。",
+  "仕事人生で最も大切な経験は何ですか？",
+  "仕事でのやりがいや成功体験を聞かせてください。",
   "仕事での失敗や挫折経験、そこから学んだことは？",
-  "家族や友人との思いでについて聞かせてください。",
+
+  // 第4部：家族・人間関係
+  "家族や友人との関係について聞かせてください。",
+  "趣味や好きなこと、人生で最も幸せを感じた時期は何ですか？",
+
+  // 第5部：健康・人生の転機
   "健康や病気について、人生に大きな影響を与えた出来事はありますか？",
+
+  // 第6部：人生の教訓
   "これまでの人生で学んだ大切な教訓は何ですか？",
   "今、大事にしていることは何ですか？",
-  "趣味や好きなことは何ですか？",
-  "人生で最も幸せを感じた時期はいつですか？",
+
+  // 第7部：メッセージ（複数対象）
   "次の世代（子ども・孫など）に伝えたいメッセージは何ですか？",
-  "家族や友人に伝えたいメッセージはありますか？",
+  "家族に伝えたいメッセージはありますか？",
+  "友人に伝えたいメッセージはありますか？",
   "職場や会社に対して伝えたいメッセージはありますか？",
+
+  // 第8部：総括
+  "人生を振り返ってどう感じていますか？",
   "これからの時間の中で、挑戦したいことはありますか？",
-  "いま人生を振り返ってどう感じていますか？",
 ];
 
 export default function InterviewPage({
@@ -96,45 +111,9 @@ export default function InterviewPage({
   const [finalAnswersWithPhotos, setFinalAnswersWithPhotos] = useState<AnswerWithPhotos[]>([]);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
-  const [savingStatus, setSavingStatus] = useState<string | null>(null);  // ✅ 新: 保存状態を表示
 
   // ファイル入力用ref
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // ✅ conversationBox の ref（自動スクロール用）
-  const conversationBoxRef = useRef<HTMLDivElement>(null);
-
-  // ✅ スクロールバーのスタイルを全体に適用
-  useEffect(() => {
-    // グローバルスタイルを追加（WebKit ブラウザ用）
-    const style = document.createElement('style');
-    style.textContent = `
-      /* Chrome, Safari, Edge 用スクロールバースタイル */
-      ::-webkit-scrollbar {
-        width: 10px;
-        height: 10px;
-      }
-      
-      ::-webkit-scrollbar-track {
-        background: #f0f0f0;
-        border-radius: 5px;
-      }
-      
-      ::-webkit-scrollbar-thumb {
-        background: #3498db;
-        border-radius: 5px;
-        border: 2px solid #f0f0f0;
-      }
-      
-      ::-webkit-scrollbar-thumb:hover {
-        background: #2980b9;
-      }
-    `;
-    document.head.appendChild(style);
-
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, []);
 
   // PCから直接写真を選択
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -305,20 +284,6 @@ export default function InterviewPage({
 
     return () => clearInterval(interval);
   }, [conversation, answersWithPhotos, currentQuestionIndex, userId]);
-
-  // ✅ 自動スクロール：最新の質問が常に見える位置に
-  useEffect(() => {
-    if (conversationBoxRef.current) {
-      // 少し遅延させて、DOM更新後にスクロール
-      setTimeout(() => {
-        if (conversationBoxRef.current) {
-          // 最下部にスクロール
-          conversationBoxRef.current.scrollTop = conversationBoxRef.current.scrollHeight;
-          console.log('📜 自動スクロール: 最新質問を表示');
-        }
-      }, 0);
-    }
-  }, [conversation]); // conversation が更新されるたびに実行
 
   const saveSessionToLocalStorage = () => {
     const SESSION_VERSION = 2;  // ✅ バージョン定数
@@ -532,7 +497,7 @@ export default function InterviewPage({
         isImportant: isImportantEvent
       };
 
-      const newAnswersWithPhotos = [...answersWithPhotos, newAnswer];
+     const newAnswersWithPhotos = [...answersWithPhotos, newAnswer];
       setAnswersWithPhotos(newAnswersWithPhotos);
 
       // 会話に追加
@@ -638,26 +603,14 @@ export default function InterviewPage({
     }
   };
 
-  // ✅ 修正版：改善された saveAndPause 関数
   const saveAndPause = async () => {
-    setSavingStatus('🔄 保存中...');
-    setProcessing(true);
+    // ① ローカルに保存
+    saveSessionToLocalStorage();
 
+    // ② バックエンドにも保存（新しいエンドポイント）
     try {
-      // ① ローカルに保存
-      saveSessionToLocalStorage();
-      console.log('✅ ローカルストレージに保存完了');
-
-      // ② バックエンドにも保存（新しいエンドポイント）
+      setProcessing(true);
       const apiUrl = API_URL;
-
-      const saveData = {
-        user_id: userId,
-        currentQuestionIndex,
-        conversation,
-        answersWithPhotos,
-        timestamp: Date.now()
-      };
 
       console.log('💾 サーバーにセッション保存開始:', {
         userId,
@@ -672,39 +625,30 @@ export default function InterviewPage({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(saveData)
+        body: JSON.stringify({
+          user_id: userId,
+          currentQuestionIndex,
+          conversation,
+          answersWithPhotos,
+          timestamp: Date.now()
+        })
       });
 
-      console.log('📡 サーバーレスポンスステータス:', response.status);
-
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(`Server save failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
       }
 
       const result = await response.json();
       console.log('✅ サーバー保存成功:', result);
-
-      // ③ 成功メッセージを表示
-      setSavingStatus('✅ 保存完了！');
-      setTimeout(() => {
-        setSavingStatus(null);
-        alert('✅ 進捗をサーバーに保存しました。\n次に再開した時に途中から続けられます。');
-        setUnsavedChanges(false);
-      }, 500);
-
+      alert('✅ 進捗をサーバーに保存しました。\n次に再開した時に途中から続けられます。');
     } catch (error) {
       console.error('❌ サーバー保存エラー:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      setSavingStatus('❌ 保存失敗');
-      setTimeout(() => {
-        setSavingStatus(null);
-      }, 2000);
-
       alert(`⚠️ ローカルには保存されましたが、サーバー保存に失敗しました。\n${errorMessage}\n\nブラウザを閉じずにもう一度お試しください。`);
     } finally {
       setProcessing(false);
+      setUnsavedChanges(false);
     }
   };
 
@@ -760,12 +704,8 @@ export default function InterviewPage({
       maxHeight: '400px',
       overflowY: 'auto' as const,
       paddingBottom: '20px',
-      paddingRight: '10px',  // ✅ スクロールバー用の余白
       borderBottom: '2px solid #ecf0f1',
-      // ✅ スクロールバーを見えやすくする
-      scrollbarWidth: 'thin' as const,  // Firefox
-      scrollbarColor: '#3498db #f0f0f0',  // Firefox (thumb, track)
-    } as const,
+    },
     message: {
       marginBottom: '15px',
       padding: '15px',
@@ -773,16 +713,34 @@ export default function InterviewPage({
       fontSize: '16px',
       lineHeight: '1.6',
     },
-    userMessage: {
-      backgroundColor: '#d4edff',
-      color: '#0c5a7f',
-    },
     assistantMessage: {
-      backgroundColor: '#f0f0f0',
-      color: '#333',
+      backgroundColor: '#ecf0f1',
+      color: '#2c3e50',
     },
-    inputSection: {
+    userMessage: {
+      backgroundColor: '#3498db',
+      color: 'white',
+      marginLeft: '40px',
+    },
+    questionBox: {
+      backgroundColor: '#fff9e6',
+      padding: '20px',
+      borderRadius: '8px',
       marginBottom: '20px',
+      fontSize: '18px',
+      fontWeight: '600',
+      color: '#2c3e50',
+      lineHeight: '1.8',
+    },
+    textInputBox: {
+      marginBottom: '20px',
+    },
+    textInputLabel: {
+      display: 'block',
+      fontSize: '16px',
+      fontWeight: '600',
+      color: '#2c3e50',
+      marginBottom: '10px',
     },
     textarea: {
       width: '100%',
@@ -790,93 +748,70 @@ export default function InterviewPage({
       padding: '12px',
       fontSize: '16px',
       border: '2px solid #bdc3c7',
-      borderRadius: '4px',
+      borderRadius: '8px',
       fontFamily: 'inherit',
-      resize: 'vertical' as const,
       marginBottom: '15px',
+    },
+    yearMonthContainer: {
+      display: 'flex',
+      gap: '15px',
+      marginBottom: '20px',
+    },
+    yearMonthLabel: {
+      display: 'block',
+      fontSize: '14px',
+      fontWeight: '600',
+      color: '#2c3e50',
+      marginBottom: '8px',
+    },
+    yearMonthInput: {
+      width: '100%',
+      padding: '10px',
+      fontSize: '16px',
+      border: '2px solid #bdc3c7',
+      borderRadius: '8px',
     },
     buttonContainer: {
       display: 'flex',
-      gap: '10px',
-      marginBottom: '15px',
-      flexWrap: 'wrap' as const,
+      flexDirection: 'column' as const,
+      gap: '12px',
+      marginBottom: '20px',
     },
     button: {
-      padding: '12px 20px',
-      fontSize: '14px',
+      padding: '14px 24px',
+      fontSize: '16px',
+      fontWeight: '600',
       border: 'none',
-      borderRadius: '4px',
+      borderRadius: '8px',
       cursor: 'pointer',
-      fontWeight: 'bold',
       transition: 'all 0.3s ease',
-      flex: 1,
-      minWidth: '120px',
+      minHeight: '48px',
     },
-    submitButton: {
-      backgroundColor: '#27ae60',
+    photoButton: {
+      backgroundColor: '#9b59b6',
       color: 'white',
     },
     voiceButton: {
       backgroundColor: '#e74c3c',
       color: 'white',
     },
-    photoButton: {
-      backgroundColor: '#f39c12',
+    submitButton: {
+      backgroundColor: '#27ae60',
       color: 'white',
     },
     pauseButton: {
-      backgroundColor: '#3498db',
+      backgroundColor: '#f39c12',
       color: 'white',
+      fontWeight: '600',
     },
     startButton: {
       backgroundColor: '#27ae60',
       color: 'white',
-      padding: '15px 30px',
-      fontSize: '18px',
-    },
-    importantCheckbox: {
-      marginRight: '10px',
-      width: '20px',
-      height: '20px',
-      cursor: 'pointer',
-    },
-    importantLabel: {
-      display: 'flex',
-      alignItems: 'center',
-      fontSize: '16px',
-      color: '#2c3e50',
-      cursor: 'pointer',
-      marginBottom: '15px',
-    },
-    textInputLabel: {
-      display: 'block',
-      fontSize: '14px',
-      fontWeight: 'bold',
-      color: '#2c3e50',
-      marginBottom: '8px',
-    },
-    yearMonthContainer: {
-      display: 'flex',
-      gap: '15px',
-      marginTop: '10px',
-    },
-    yearMonthLabel: {
-      fontSize: '14px',
-      fontWeight: 'bold',
-      color: '#2c3e50',
-      marginBottom: '8px',
-    },
-    yearMonthInput: {
-      padding: '10px',
-      fontSize: '14px',
-      border: '2px solid #bdc3c7',
-      borderRadius: '4px',
-      fontFamily: 'inherit',
     },
     photosContainer: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-      gap: '15px',
+      gap: '12px',
       marginTop: '15px',
     },
     photoCard: {
@@ -963,16 +898,6 @@ export default function InterviewPage({
       borderLeft: '4px solid #3498db',
       fontSize: '15px',
       lineHeight: '1.6',
-    },
-    savingStatus: {
-      padding: '12px',
-      marginBottom: '15px',
-      borderRadius: '4px',
-      textAlign: 'center' as const,
-      fontWeight: 'bold',
-      backgroundColor: '#e8f4f8',
-      color: '#0c5a7f',
-      fontSize: '14px',
     },
   };
 
@@ -1088,6 +1013,29 @@ export default function InterviewPage({
           )}
 
           <button
+            onClick={() => setShowQuestionsList(!showQuestionsList)}
+            style={{
+              ...styles.button,
+              backgroundColor: '#95a5a6',
+              color: 'white',
+              marginBottom: '20px',
+              width: '100%',
+            }}
+          >
+            {showQuestionsList ? '質問リストを非表示' : '質問リストを表示'}
+          </button>
+
+          {showQuestionsList && (
+            <div style={styles.questionsList}>
+              {INTERVIEW_QUESTIONS.map((q, idx) => (
+                <div key={idx} style={styles.questionItem}>
+                  <strong>Q{idx + 1}:</strong> {q}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
             onClick={startInterview}
             disabled={processing}
             style={{
@@ -1095,33 +1043,11 @@ export default function InterviewPage({
               ...styles.startButton,
               width: '100%',
               opacity: processing ? 0.6 : 1,
-              marginBottom: '12px',
+              fontSize: '18px',
             }}
           >
-            {processing ? '準備中...' : '人生記録を開始する'}
+            {processing ? '聞き取り開始中...' : '聞き取りを開始'}
           </button>
-
-          <button
-            onClick={() => setShowQuestionsList(!showQuestionsList)}
-            style={{
-              ...styles.button,
-              backgroundColor: '#95a5a6',
-              color: 'white',
-              width: '100%',
-            }}
-          >
-            質問一覧を確認
-          </button>
-
-          {showQuestionsList && (
-            <div style={styles.questionsList}>
-              {INTERVIEW_QUESTIONS.map((q, idx) => (
-                <div key={idx} style={styles.questionItem}>
-                  {idx + 1}. {q}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     );
@@ -1130,78 +1056,77 @@ export default function InterviewPage({
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <div style={styles.title}>人生記録</div>
-
-        {error && (
-          <div style={{ backgroundColor: '#ffebee', color: '#c62828', padding: '15px', borderRadius: '8px', marginBottom: '20px', fontSize: '15px' }}>
-            エラー: {error}
-          </div>
-        )}
-
-        {/* ✅ 新: 保存状態表示 */}
-        {savingStatus && (
-          <div style={styles.savingStatus}>
-            {savingStatus}
-          </div>
-        )}
-
         <div style={styles.progressText}>
           進捗: {currentQuestionIndex + 1} / {INTERVIEW_QUESTIONS.length}
         </div>
         <div style={styles.progressBar}>
-          <div
-            style={{
-              ...styles.progressFill,
-              width: `${progress}%`,
-            }}
-          />
+          <div style={{ ...styles.progressFill, width: `${progress}%` }}></div>
         </div>
+
+        {conversation.length > 0 && (
+          <div style={styles.conversationBox}>
+            {conversation.map((msg, idx) => (
+              <div
+                key={idx}
+                style={{
+                  ...styles.message,
+                  ...(msg.role === 'assistant' ? styles.assistantMessage : styles.userMessage),
+                }}
+              >
+                <strong>{msg.role === 'assistant' ? 'AI: ' : 'あなた: '}</strong>
+                {msg.content}
+              </div>
+            ))}
+          </div>
+        )}
 
         {isAnswering && (
           <>
-            <div style={styles.conversationBox} ref={conversationBoxRef}>
-              {conversation.map((msg, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    ...styles.message,
-                    ...(msg.role === 'user' ? styles.userMessage : styles.assistantMessage),
-                  }}
-                >
-                  {msg.content}
-                </div>
-              ))}
+            <div style={styles.questionBox}>
+              {getCurrentQuestion()}
             </div>
 
-            <div style={styles.inputSection}>
-              <label style={styles.textInputLabel}>📝 あなたの回答</label>
+            <div style={styles.textInputBox}>
+              <label style={styles.textInputLabel}>💬 テキストで入力：</label>
               <textarea
                 value={currentAnswer}
                 onChange={(e) => {
                   setCurrentAnswer(e.target.value);
                   setUnsavedChanges(true);
                 }}
-                placeholder="ここに回答を入力してください..."
+                placeholder="ここに答えを入力してください..."
                 style={styles.textarea}
               />
 
               {/* ✅ 重要な出来事チェックボックス */}
-              <label style={styles.importantLabel}>
-                <input
-                  type="checkbox"
-                  checked={isImportantEvent}
-                  onChange={(e) => {
-                    setIsImportantEvent(e.target.checked);
-                    setUnsavedChanges(true);
-                  }}
-                  style={styles.importantCheckbox}
-                />
-                📌 これは人生で重要な出来事である
-              </label>
-
-              <p style={{ fontSize: '12px', color: '#7f8c8d', marginBottom: '15px' }}>
-                チェックすると、年月を記録して人生年表に表示されます
-              </p>
+              <div style={{ marginTop: '15px', marginBottom: '15px' }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontSize: '16px',
+                  color: '#2c3e50',
+                  cursor: 'pointer'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={isImportantEvent}
+                    onChange={(e) => {
+                      setIsImportantEvent(e.target.checked);
+                      setUnsavedChanges(true);
+                    }}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      marginRight: '10px',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  ⭐ これは人生の重要な出来事です
+                </label>
+                <p style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '5px', marginLeft: '30px' }}>
+                  チェックすると、年月を記録して人生年表に表示されます
+                </p>
+              </div>
 
               {/* ✅ 重要な出来事の場合だけ年月入力を表示 */}
               {isImportantEvent && (
@@ -1368,13 +1293,11 @@ export default function InterviewPage({
             {unsavedChanges && (
               <button
                 onClick={saveAndPause}
-                disabled={processing}
                 style={{
                   ...styles.button,
                   ...styles.pauseButton,
                   width: '100%',
                   marginTop: '10px',
-                  opacity: processing ? 0.6 : 1,
                 }}
               >
                 💾 保存して中断

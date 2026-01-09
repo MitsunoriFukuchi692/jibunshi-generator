@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import './TimelineListPage.css'
+import { API_URL } from '../config';
+const apiBaseUrl = API_URL;
 
 interface TimelineEvent {
   id: number
@@ -36,7 +38,7 @@ export default function TimelineListPage({
       try {
         // ✅ 修正：apiBaseUrl の代わりに import.meta.env.VITE_API_BASE_URL を使用
         // ✅ 修正：'/api/timeline/user/2' から '/api/timeline/user/${userId}' に変更
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+        
         const url = `${apiBaseUrl}/api/timeline/user/${userId}`
         
         console.log('📊 Fetching timeline from:', url)
@@ -110,7 +112,7 @@ export default function TimelineListPage({
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/timeline/${editingId}`,
+  `${apiBaseUrl}/api/timeline/${editingId}`,
         {
           method: 'PUT',
           headers: {
@@ -150,7 +152,7 @@ export default function TimelineListPage({
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/timeline/${id}`,
+  `${apiBaseUrl}/api/timeline/${editingId}`,
         {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }

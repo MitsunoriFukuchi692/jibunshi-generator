@@ -202,9 +202,40 @@ export default function UserPage({
       setToken(data.token)
       setUserInfo({ name: data.user.name, age: data.user.age || 0 })
 
-      // ✅ 修正：timelineList ページへ遷移
-      // 既存ユーザーはインタビューをスキップして、年表確認ページへ直接遷移
-      window.location.hash = 'timelineList'
+      // ✅ 修正：インタビューデータの有無を確認
+      // データなし → インタビューページへ遷移
+      // データあり → 年表確認ページへ遷移
+      try {
+        const interviewCheckResponse = await fetch(`${apiUrl}/api/interview-session/load`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${data.token}`
+          }
+        })
+
+        if (interviewCheckResponse.ok) {
+          const session = await interviewCheckResponse.json()
+          
+          // インタビューデータが存在するか確認
+          if (session.answersWithPhotos && session.answersWithPhotos.length > 0) {
+            // ✅ データあり → 年表確認ページへ
+            console.log('✅ インタビュー済み → TimelineListPage へ')
+            window.location.hash = 'timelineList'
+          } else {
+            // ✅ データなし → インタビューページへ
+            console.log('📝 インタビュー未実施 → InterviewPage へ')
+            window.location.hash = 'interview'
+          }
+        } else {
+          // データなし → インタビューページへ
+          console.log('📝 インタビューデータ未取得 → InterviewPage へ')
+          window.location.hash = 'interview'
+        }
+      } catch (err) {
+        // エラー時はインタビューページへ遷移（安全な選択）
+        console.warn('⚠️ インタビューデータ確認エラー:', err)
+        window.location.hash = 'interview'
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ログインに失敗しました。')
     } finally {

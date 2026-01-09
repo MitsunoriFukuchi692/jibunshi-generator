@@ -141,6 +141,7 @@ function App() {
             }}
           />
         )}
+
         {/* ページ6: 人生年表一覧（追加・編集・削除） */}
         {currentPage === 'timelineList' && userId && token && (
           <TimelineListPage
@@ -154,9 +155,18 @@ function App() {
           />
         )}
 
-        {/* ページ7: PDF表示・ダウンロード */}
-        {currentPage === 'pdfDisplay' && userId && token && (
-          <PDFDisplayPage userId={userId} token={token} />
+        {/* ページ7: PDF表示・ダウンロード（修正版：生インタビュー画面） */}
+        {currentPage === 'pdfDisplay' && userId && token && userInfo && (
+          <PDFDisplayPage 
+            userId={userId} 
+            token={token}
+            userInfo={userInfo}
+            answersWithPhotos={interviewAnswersWithPhotos}
+            onComplete={() => {
+              // 完了後の処理（例：ホームに戻る）
+              window.location.hash = 'user';
+            }}
+          />
         )}
       </main>
     </div>
