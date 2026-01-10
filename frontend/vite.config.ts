@@ -5,12 +5,12 @@ export default defineConfig({
   base: '/jibunshi/',
   plugins: [react()],
   server: {
-    host: '0.0.0.0',
+    host: 'localhost',  // ← '0.0.0.0' から 'localhost' に戻す
     port: 5173,
     allowedHosts: 'all',
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:3000',
         changeOrigin: true,
       },
     },
@@ -18,7 +18,6 @@ export default defineConfig({
   build: {
     target: 'ES2020',
     outDir: 'dist',
-    // 本番環境用: 環境変数の置換を有効化
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
     },

@@ -301,7 +301,36 @@ export default function AIGenerationPage({
 
       setProgress(100);
 
-      // ✅ ステップ6: 完了処理
+      // ✅ ステップ6: interview-session を保存（セッションの確定）
+      console.log('💾 セッションをインタビューセッションテーブルに保存...');
+
+      try {
+        const sessionResponse = await fetch(`${apiUrl}/api/interview-session/save`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            currentQuestionIndex: 19,
+            conversation: [],
+            answersWithPhotos: answersWithPhotos,
+            timestamp: Date.now()
+          })
+        });
+
+        if (sessionResponse.ok) {
+          const sessionData = await sessionResponse.json();
+          console.log('✅ セッション保存完了:', sessionData);
+        } else {
+          const errorData = await sessionResponse.json();
+          console.warn('⚠️ セッション保存失敗:', errorData);
+        }
+      } catch (sessionError) {
+        console.error('❌ セッション保存エラー:', sessionError);
+      }
+
+      // ✅ ステップ7: 完了処理
       setTimeout(() => {
         console.log('🎉 AI作成完了 - 修正ページへ遷移');
         onComplete();

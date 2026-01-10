@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './UserPage.css'
 
 interface UserPageProps {
@@ -16,6 +16,20 @@ interface LoginCandidate {
   birthMonth: number
   birthDay: number
   age: number
+}
+
+// ============================================
+// Device ID 管理（デバイス識別用）
+// ============================================
+function getOrCreateDeviceId(): string {
+  let deviceId = localStorage.getItem('deviceId')
+  if (!deviceId) {
+    // UUID v4 を生成
+    deviceId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    localStorage.setItem('deviceId', deviceId)
+    console.log(`✅ Device ID created: ${deviceId}`)
+  }
+  return deviceId
 }
 
 export default function UserPage({ 
@@ -53,8 +67,15 @@ export default function UserPage({
   // ✅ 共通
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [deviceId, setDeviceId] = useState<string>('')
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+  // ✅ Device ID をマウント時に初期化
+  useEffect(() => {
+    const id = getOrCreateDeviceId()
+    setDeviceId(id)
+  }, [])
 
   // ============================================
   // ステップ1: ログインと新規登録の選択
@@ -167,7 +188,7 @@ export default function UserPage({
   }
 
   // ============================================
-  // ログイン: ステップ3 - PIN検証
+  // ログイン: ステップ3 - PIN検証 + セッション保存
   // ============================================
   const handleLoginPinVerify = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -183,7 +204,11 @@ export default function UserPage({
       const response = await fetch(`${apiUrl}/api/users/login/verify-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: loginUserId, pin: loginPin }),
+        body: JSON.stringify({ 
+          userId: loginUserId, 
+          pin: loginPin,
+          deviceId: deviceId  // ✅ device_id を送信
+        }),
       })
 
       if (!response.ok) {
@@ -193,10 +218,11 @@ export default function UserPage({
 
       const data = await response.json()
 
-      // ログイン成功
+      // ✅ ログイン成功 - ローカルストレージに保存
       localStorage.setItem('token', data.token)
       localStorage.setItem('userId', data.userId)
       localStorage.setItem('userInfo', JSON.stringify(data.user))
+      localStorage.setItem('deviceId', deviceId)  // ✅ device_id も保存
 
       setUserId(data.userId)
       setToken(data.token)
@@ -280,7 +306,7 @@ export default function UserPage({
     }
 
     if (regPin !== regPinConfirm) {
-      setError('PINの確認が一致しません。')
+      setError('PINが一致しません。')
       return
     }
 
@@ -296,6 +322,7 @@ export default function UserPage({
           birthMonth: month,
           birthDay: day,
           pin: regPin,
+          deviceId: deviceId  // ✅ device_id を送信
         }),
       })
 
@@ -306,10 +333,11 @@ export default function UserPage({
 
       const data = await response.json()
 
-      // 登録成功
+      // ✅ 登録成功 - ローカルストレージに保存
       localStorage.setItem('token', data.token)
       localStorage.setItem('userId', data.userId)
       localStorage.setItem('userInfo', JSON.stringify(data.user))
+      localStorage.setItem('deviceId', deviceId)  // ✅ device_id も保存
 
       setUserId(data.userId)
       setToken(data.token)
@@ -325,7 +353,7 @@ export default function UserPage({
   }
 
   // ============================================
-  // PIN忘れ: 名前確認
+  // PIN忘れ: ステップ1 - 名前確認
   // ============================================
   const handleForgotPinNameConfirm = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -361,7 +389,7 @@ export default function UserPage({
   }
 
   // ============================================
-  // PIN忘れ: 月日確認＆新PIN設定
+  // PIN忘れ: ステップ2 - 月日確認＆新PIN設定
   // ============================================
   const handleForgotPinReset = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -386,7 +414,7 @@ export default function UserPage({
     }
 
     if (forgotNewPin !== forgotNewPinConfirm) {
-      setError('新しいPINの確認が一致しません。')
+      setError('新しいPINが一致しません。')
       return
     }
 
@@ -409,9 +437,7 @@ export default function UserPage({
         throw new Error(data.error || 'PIN変更に失敗しました。')
       }
 
-      // 成功 → ログイン画面に戻る
       setError(null)
-      alert('PINが変更されました。新しいPINでログインしてください。')
       setStep('choice')
       setForgotName('')
       setForgotBirthMonth('')
@@ -426,16 +452,16 @@ export default function UserPage({
   }
 
   // ============================================
-  // UI: ステップ選択画面
+  // UI: 初期選択画面
   // ============================================
   if (step === 'choice') {
     return (
       <div className="user-page">
         <div className="user-container">
-          <h1>📚 人生記録</h1>
-          <p className="subtitle">あなたの人生のお話を聞かせていただきます</p>
+          <h1>📚 自分史作成アプリ</h1>
+          <p className="subtitle">ログインまたは新規登録してください</p>
 
-          <div className="choice-buttons">
+          <div className="button-group">
             <button
               onClick={handleChoiceLogin}
               className="btn-primary"
@@ -452,10 +478,10 @@ export default function UserPage({
             </button>
             <button
               onClick={handleChoiceForgotPin}
-              className="btn-warning"
+              className="btn-tertiary"
               disabled={loading}
             >
-              PINを忘れた
+              PINをリセット
             </button>
           </div>
 
@@ -473,7 +499,8 @@ export default function UserPage({
       <div className="user-page">
         <div className="user-container">
           <h1>📚 ログイン</h1>
-          
+          <p className="subtitle">お名前を入力してください</p>
+
           <form onSubmit={handleLoginNameCheck}>
             <div className="form-group">
               <label>お名前</label>
@@ -517,14 +544,27 @@ export default function UserPage({
   }
 
   // ============================================
-  // UI: ログイン - 月日入力
+  // UI: ログイン - 月日確認
   // ============================================
   if (step === 'login-birthday') {
     return (
       <div className="user-page">
         <div className="user-container">
           <h1>📚 ログイン</h1>
-          <p className="subtitle">生年月日（月・日）を入力してください</p>
+          <p className="subtitle">生年月日を入力してください</p>
+
+          {loginCandidates.length > 0 && (
+            <div className="candidates-info">
+              <p>同じお名前の方が複数おられます：</p>
+              <ul>
+                {loginCandidates.map((candidate) => (
+                  <li key={candidate.id}>
+                    {candidate.name} 様（{candidate.birthMonth}月{candidate.birthDay}日生まれ、{candidate.age}歳）
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <form onSubmit={handleLoginBirthdayVerify}>
             <div className="form-group">
@@ -561,6 +601,7 @@ export default function UserPage({
                   setStep('login-name')
                   setLoginBirthMonth('')
                   setLoginBirthDay('')
+                  setLoginCandidates([])
                   setError(null)
                 }}
                 className="btn-secondary"
@@ -585,20 +626,20 @@ export default function UserPage({
   }
 
   // ============================================
-  // UI: ログイン - PIN検証
+  // UI: ログイン - PIN入力
   // ============================================
   if (step === 'login-pin') {
     return (
       <div className="user-page">
         <div className="user-container">
           <h1>📚 ログイン</h1>
-          <p className="subtitle">PINを入力してください（4桁の数字）</p>
+          <p className="subtitle">PIN（4桁）を入力してください</p>
 
           <form onSubmit={handleLoginPinVerify}>
             <div className="form-group">
-              <label>PIN</label>
+              <label>PIN（4桁の数字）</label>
               <input
-                type="text"
+                type="password"
                 value={loginPin}
                 onChange={(e) => setLoginPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 placeholder="例：1234"
