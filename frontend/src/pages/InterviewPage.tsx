@@ -623,6 +623,44 @@ export default function InterviewPage({
           console.warn('⚠️ サーバーセッション削除失敗:', error);
         }
 
+        // 🔥 重要修正：19問完了時にデータベースに永続保存
+        console.log('💾 [重要] インタビュー完了 - データベース保存開始');
+        console.log('📊 保存予定データ:', {
+          userId,
+          answersCount: newAnswersWithPhotos.length,
+          userAge: userInfo?.age,
+          firstAnswer: newAnswersWithPhotos[0]?.text?.substring(0, 50)
+        });
+
+        try {
+          const apiUrl = API_URL;
+          const saveInterviewResponse = await fetch(`${apiUrl}/api/interview/save`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userId,
+              age: userInfo?.age,
+              answersWithPhotos: newAnswersWithPhotos
+            })
+          });
+
+          if (saveInterviewResponse.ok) {
+            const result = await saveInterviewResponse.json();
+            console.log('✅ インタビューデータをDBに永続保存しました:', result);
+          } else {
+            console.error('❌ インタビュー保存失敗:', saveInterviewResponse.status);
+            const errorData = await saveInterviewResponse.json().catch(() => ({}));
+            console.error('❌ エラー詳細:', errorData);
+            alert(`⚠️ インタビューデータの保存に失敗しました（${saveInterviewResponse.status}）。\nAI生成に進みますが、データが保存されていない可能性があります。`);
+          }
+        } catch (error) {
+          console.error('❌ インタビュー保存エラー:', error);
+          alert(`⚠️ インタビューデータの保存に失敗しました。\nエラー: ${error instanceof Error ? error.message : 'Unknown error'}\n\nAI生成に進みますが、データが保存されていない可能性があります。`);
+        }
+
         // ✅ AIGeneration へ遷移
         if (onAIGenerationStart) {
           onAIGenerationStart(newAnswersWithPhotos);
