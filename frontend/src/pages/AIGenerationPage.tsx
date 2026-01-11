@@ -31,6 +31,7 @@ export default function AIGenerationPage({
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const hasStarted = useRef(false);  // ✅ 修正: 2重実行防止フラグ
+  const retryCount = useRef(0);  // ✅ 新: リトライ回数を記録
 
   useEffect(() => {
     // ✅ 修正: 既に実行中なら何もしない
@@ -98,8 +99,25 @@ export default function AIGenerationPage({
 
       // ✅ ステップ1: 重要なできごとを抽出
       console.log('🔍 重要なできごとを抽出...');
-      const importantEvents = (answersWithPhotos || []).filter((ans: Answer) => ans.isImportant);
-      const allResponses = (answersWithPhotos || [])
+      
+      // ✅ 修正：回答データの検証を強化
+      if (!answersWithPhotos || answersWithPhotos.length === 0) {
+        throw new Error('回答データが見つかりません。インタビューをやり直してください。');
+      }
+
+      // ✅ 修正：text フィールドが空でない回答だけを使用
+      const validAnswers = answersWithPhotos.filter((ans: Answer) => {
+        const hasText = ans.text && typeof ans.text === 'string' && ans.text.trim().length > 0;
+        if (!hasText) {
+          console.warn('⚠️ 空の回答を検出:', ans);
+        }
+        return hasText;
+      });
+
+      console.log(`✅ 検証結果: ${validAnswers.length}/${answersWithPhotos.length} 件の有効な回答`);
+
+      const importantEvents = validAnswers.filter((ans: Answer) => ans.isImportant);
+      const allResponses = validAnswers
         .map((ans: Answer) => ans.text || '')
         .filter(Boolean);
 
@@ -107,7 +125,7 @@ export default function AIGenerationPage({
       console.log('📝 全回答テキスト数:', allResponses.length);
 
       if (allResponses.length === 0) {
-        throw new Error('有効な回答がありません');
+        throw new Error('有効な回答がありません。インタビューをやり直してください。');
       }
 
       setProgress(20);
@@ -140,6 +158,10 @@ export default function AIGenerationPage({
 
       console.log('✅ AI作成完了');
       console.log('📄 作成テキスト長:', editedContent?.length || 0);
+
+      if (!editedContent || editedContent.trim().length === 0) {
+        throw new Error('AI生成テキストが空です。もう一度試してください。');
+      }
 
       setProgress(70);
 
@@ -280,65 +302,33 @@ export default function AIGenerationPage({
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
-              user_id: userId,
-              important_events: JSON.stringify(importantEventsTitles),  // ✅ JSON文字列として保存
-              turning_points: JSON.stringify([]),  // 初期値は空
-              custom_metadata: {}
+              important_events: importantEventsTitles.join('\n'),
+              turning_points: 'AI生成'
             })
           });
 
           if (!metadataResponse.ok) {
-            console.warn(`⚠️ timeline_metadata 作成失敗 (timeline_id: ${timelineId})`);
-            // エラーでも続行
+            console.warn(`⚠️ メタデータ保存に失敗（続行）: timeline_id=${timelineId}`);
           } else {
-            console.log(`✅ timeline_metadata 作成完了 - timeline_id: ${timelineId}`);
+            console.log(`✅ timeline_metadata 保存完了: timeline_id=${timelineId}`);
           }
         }
-      } catch (metadataError) {
-        console.warn('⚠️ timeline_metadata 作成エラー (non-fatal):', metadataError);
-        // metadata 作成失敗はエラーにしない
+      } catch (metaError) {
+        console.warn('⚠️ メタデータ作成エラーですが続行:', metaError);
       }
 
       setProgress(100);
+      console.log('✅ AI生成 → 全ステップ完了！');
 
-      // ✅ ステップ6: interview-session を保存（セッションの確定）
-      console.log('💾 セッションをインタビューセッションテーブルに保存...');
-
-      try {
-        const sessionResponse = await fetch(`${apiUrl}/api/interview-session/save`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            currentQuestionIndex: 19,
-            conversation: [],
-            answersWithPhotos: answersWithPhotos,
-            timestamp: Date.now()
-          })
-        });
-
-        if (sessionResponse.ok) {
-          const sessionData = await sessionResponse.json();
-          console.log('✅ セッション保存完了:', sessionData);
-        } else {
-          const errorData = await sessionResponse.json();
-          console.warn('⚠️ セッション保存失敗:', errorData);
-        }
-      } catch (sessionError) {
-        console.error('❌ セッション保存エラー:', sessionError);
-      }
-
-      // ✅ ステップ7: 完了処理
+      // ✅ 修正: 少し遅延させてから onComplete を呼び出す
       setTimeout(() => {
-        console.log('🎉 AI作成完了 - 修正ページへ遷移');
+        setLoading(false);
         onComplete();
-      }, 1000);
+      }, 500);
 
     } catch (error) {
-      console.error('❌ AI作成エラー:', error);
-      const errorMessage = error instanceof Error ? error.message : 'AI作成に失敗しました';
+      console.error('❌ AI生成エラー:', error);
+      const errorMessage = error instanceof Error ? error.message : 'AI生成に失敗しました';
       setError(errorMessage);
       setLoading(false);
     }
@@ -347,104 +337,102 @@ export default function AIGenerationPage({
   const styles = {
     container: {
       display: 'flex',
-      flexDirection: 'column' as const,
       justifyContent: 'center',
       alignItems: 'center',
       minHeight: '100vh',
-      backgroundColor: '#f9f7f4',
+      backgroundColor: '#f5f5f5',
       padding: '20px',
     },
     card: {
-      backgroundColor: 'white',
-      padding: '60px 40px',
+      background: 'white',
       borderRadius: '8px',
-      boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
-      textAlign: 'center' as const,
+      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+      padding: '40px',
       maxWidth: '500px',
+      width: '100%',
     },
     title: {
-      fontSize: '32px',
+      fontSize: '24px',
       fontWeight: 'bold',
-      color: '#2c3e50',
       marginBottom: '20px',
+      textAlign: 'center' as const,
+      color: '#333',
     },
     subtitle: {
-      fontSize: '16px',
-      color: '#7f8c8d',
-      marginBottom: '40px',
-      fontStyle: 'italic',
+      fontSize: '14px',
+      color: '#888',
+      marginBottom: '30px',
+      textAlign: 'center' as const,
     },
     progressContainer: {
-      width: '100%',
       marginBottom: '30px',
     },
     progressBar: {
-      width: '100%',
       height: '8px',
-      backgroundColor: '#ecf0f1',
+      backgroundColor: '#e0e0e0',
       borderRadius: '4px',
       overflow: 'hidden',
-      marginBottom: '15px',
+      marginBottom: '10px',
     },
     progressFill: {
       height: '100%',
-      backgroundColor: '#3498db',
+      backgroundColor: '#4CAF50',
       width: `${progress}%`,
       transition: 'width 0.3s ease',
     },
     progressText: {
-      fontSize: '14px',
-      color: '#7f8c8d',
-      marginTop: '10px',
+      textAlign: 'center' as const,
+      fontSize: '12px',
+      color: '#666',
     },
     steps: {
-      marginTop: '40px',
-      textAlign: 'left' as const,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '12px',
     },
     step: {
       display: 'flex',
       alignItems: 'center',
-      marginBottom: '15px',
-      opacity: progress >= (70 - (3 - 1) * 20) ? 1 : 0.5,
+      fontSize: '14px',
+      color: '#555',
     },
     stepNumber: {
-      width: '30px',
-      height: '30px',
-      borderRadius: '50%',
-      backgroundColor: '#3498db',
-      color: 'white',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      width: '24px',
+      height: '24px',
+      borderRadius: '50%',
+      backgroundColor: '#e0e0e0',
+      marginRight: '12px',
+      fontSize: '12px',
       fontWeight: 'bold',
-      marginRight: '15px',
-      fontSize: '14px',
     },
     stepText: {
-      fontSize: '14px',
-      color: '#34495e',
+      flex: 1,
     },
     loadingDot: {
       display: 'inline-block',
       width: '8px',
       height: '8px',
       borderRadius: '50%',
-      backgroundColor: '#3498db',
-      marginLeft: '5px',
+      backgroundColor: '#4CAF50',
+      marginLeft: '4px',
       animation: 'pulse 1.5s infinite',
     },
     errorBox: {
       backgroundColor: '#ffebee',
-      color: '#c62828',
-      padding: '20px',
+      border: '1px solid #ef5350',
       borderRadius: '4px',
+      padding: '16px',
       marginBottom: '20px',
-      textAlign: 'left' as const,
+      fontSize: '14px',
+      color: '#c62828',
     },
     retryButton: {
-      marginTop: '20px',
-      padding: '12px 30px',
-      backgroundColor: '#e74c3c',
+      width: '100%',
+      padding: '12px',
+      backgroundColor: '#ff5722',
       color: 'white',
       border: 'none',
       borderRadius: '4px',
@@ -466,8 +454,11 @@ export default function AIGenerationPage({
           <button
             style={styles.retryButton}
             onClick={() => {
+              retryCount.current++;
+              console.log(`🔄 リトライ ${retryCount.current} 回目`);
               setError(null);
               setProgress(0);
+              hasStarted.current = false;  // ✅ 修正: フラグをリセット
               deleteOldDataAndGenerate();
             }}
           >
