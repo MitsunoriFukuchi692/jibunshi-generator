@@ -601,7 +601,9 @@ export default function InterviewPage({
           }
         }, 0);
       } else {
-        // インタビュー完了
+        // ✅ 修正: インタビュー完了時に TextCorrectionPage を経由
+        console.log('✅ インタビュー完了 - TextCorrectionPage へ遷移');
+        
         setConversation(newConversation);
         setFinalConversation(newConversation);
         setFinalAnswersWithPhotos(newAnswersWithPhotos);
@@ -661,9 +663,10 @@ export default function InterviewPage({
           alert(`⚠️ インタビューデータの保存に失敗しました。\nエラー: ${error instanceof Error ? error.message : 'Unknown error'}\n\nAI生成に進みますが、データが保存されていない可能性があります。`);
         }
 
-        // ✅ AIGeneration へ遷移
-        if (onAIGenerationStart) {
-          onAIGenerationStart(newAnswersWithPhotos);
+        // ✅ TextCorrectionPage へ遷移（AI編集が必要）
+        if (onCorrectionStart) {
+          console.log('🎯 onCorrectionStart を呼び出し');
+          onCorrectionStart(newConversation, newAnswersWithPhotos);
         }
       }
     } catch (error) {
@@ -1061,14 +1064,8 @@ export default function InterviewPage({
 
           <button
             onClick={() => {
-              if (onAIGenerationStart) {
-                // ✅ 修正: answersWithPhotos に正確な text フィールドがあることを確認してから渡す
-                console.log('📊 AI生成に渡すanswersWithPhotos:', {
-                  count: answersWithPhotos.length,
-                  sample: answersWithPhotos[0],
-                  allHaveText: answersWithPhotos.every((a: any) => a.text && a.text.trim().length > 0)
-                });
-                onAIGenerationStart(answersWithPhotos);
+              if (onCorrectionStart) {
+                onCorrectionStart(finalConversation, finalAnswersWithPhotos);
               }
             }}
             style={{
@@ -1078,13 +1075,13 @@ export default function InterviewPage({
               marginBottom: '12px',
             }}
           >
-            AI作成を開始する
+            AI自動修正を開始する
           </button>
 
           <button
             onClick={() => {
-              if (onCorrectionStart) {
-                onCorrectionStart(finalConversation, finalAnswersWithPhotos);
+              if (onAIGenerationStart) {
+                onAIGenerationStart(answersWithPhotos);
               }
             }}
             style={{
@@ -1094,7 +1091,7 @@ export default function InterviewPage({
               width: '100%',
             }}
           >
-            修正ページへ進む
+            修正をスキップしてAI作成へ進む
           </button>
         </div>
       </div>
