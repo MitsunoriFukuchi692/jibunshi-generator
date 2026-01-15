@@ -18,6 +18,7 @@ function App() {
   const [isInitialized, setIsInitialized] = useState(false)
   const [interviewConversation, setInterviewConversation] = useState<any[]>([])
   const [interviewAnswersWithPhotos, setInterviewAnswersWithPhotos] = useState<any[]>([])
+  const [correctedText, setCorrectedText] = useState<string>('')  // ✅ 新：修正テキストを保存
 
   // ① localStorage から userId と token を取得（初期化）
   useEffect(() => {
@@ -109,6 +110,7 @@ function App() {
             userId={userId}
             token={token}
             answersWithPhotos={interviewAnswersWithPhotos}
+            correctedText={correctedText}  // ✅ 修正：修正テキストを渡す
             userInfo={userInfo}
             onComplete={() => {
               console.log('✅ AI生成完了 → PDFDisplay へ');
@@ -124,8 +126,12 @@ function App() {
             token={token}
             conversation={interviewConversation}
             answersWithPhotos={interviewAnswersWithPhotos}
-            onComplete={() => {
-              window.location.hash = 'corrected';
+            onComplete={(editedContent) => {
+              console.log('✅ TextCorrectionPage 完了 - 修正テキスト受け取り:', editedContent?.length, '文字');
+              setCorrectedText(editedContent || '');
+              setTimeout(() => {
+                window.location.hash = 'aiGeneration';
+              }, 100);
             }}
           />
         )}
@@ -157,8 +163,8 @@ function App() {
 
         {/* ページ7: PDF表示・ダウンロード（修正版：生インタビュー画面） */}
         {currentPage === 'pdfDisplay' && userId && token && userInfo && (
-          <PDFDisplayPage 
-            userId={userId} 
+          <PDFDisplayPage
+            userId={userId}
             token={token}
             userInfo={userInfo}
             answersWithPhotos={interviewAnswersWithPhotos}

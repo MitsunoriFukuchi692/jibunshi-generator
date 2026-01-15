@@ -9,16 +9,19 @@ export default function TextCorrectionPage({
     userId,
     token,
     conversation,
+    answersWithPhotos,
     onComplete
 }: {
     userId: number;
     token: string | null;
     conversation: Message[];
-    onComplete: () => void;
+    answersWithPhotos: any[];
+    onComplete: (editedContent: string) => void;
 }) {
     const [correctedText, setCorrectedText] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         correctText();
@@ -66,6 +69,49 @@ export default function TextCorrectionPage({
             setError(errorMessage);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // ✅ 修正：修正テキストを biography に保存
+    const handleComplete = async () => {
+        try {
+            setSaving(true);
+            const apiUrl = import.meta.env.VITE_API_URL;
+            if (!apiUrl) throw new Error('API URLが設定されていません');
+
+            console.log('💾 修正テキストを biography に保存中...');
+
+            // biography に修正テキストを保存
+            const biographyResponse = await fetch(`${apiUrl}/api/biography`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    edited_content: correctedText,
+                    ai_summary: correctedText
+                })
+            });
+
+            if (!biographyResponse.ok) {
+                const errorData = await biographyResponse.json();
+                throw new Error(`biography 保存に失敗しました: ${errorData.error}`);
+            }
+
+            const biographyData = await biographyResponse.json();
+            console.log('✅ Biography 保存完了 - ID:', biographyData.data?.id);
+
+            // AIGenerationPage へ遷移（修正テキストを渡す）
+            console.log('✅ TextCorrectionPage 完了 - AIGenerationPage へ遷移');
+            onComplete(correctedText);
+        } catch (error) {
+            console.error('❌ biography 保存エラー:', error);
+            const errorMessage = error instanceof Error ? error.message : 'biography 保存に失敗しました';
+            setError(errorMessage);
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -195,19 +241,23 @@ export default function TextCorrectionPage({
 
                         <div style={styles.buttonContainer}>
                             <button
-                                onClick={onComplete}
+                                onClick={handleComplete}
+                                disabled={saving}
                                 style={{
                                     ...styles.button,
                                     ...styles.completeButton,
+                                    opacity: saving ? 0.6 : 1,
                                 }}
                             >
-                                完了 ✓
+                                {saving ? '保存中...' : '完了 ✓'}
                             </button>
                             <button
                                 onClick={correctText}
+                                disabled={saving}
                                 style={{
                                     ...styles.button,
                                     ...styles.editButton,
+                                    opacity: saving ? 0.6 : 1,
                                 }}
                             >
                                 もう一度修正する

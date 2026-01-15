@@ -601,9 +601,7 @@ export default function InterviewPage({
           }
         }, 0);
       } else {
-        // ✅ 修正: インタビュー完了時に TextCorrectionPage を経由
-        console.log('✅ インタビュー完了 - TextCorrectionPage へ遷移');
-        
+        // インタビュー完了
         setConversation(newConversation);
         setFinalConversation(newConversation);
         setFinalAnswersWithPhotos(newAnswersWithPhotos);
@@ -661,6 +659,63 @@ export default function InterviewPage({
         } catch (error) {
           console.error('❌ インタビュー保存エラー:', error);
           alert(`⚠️ インタビューデータの保存に失敗しました。\nエラー: ${error instanceof Error ? error.message : 'Unknown error'}\n\nAI生成に進みますが、データが保存されていない可能性があります。`);
+        }
+
+        // ✅ 新：19問完了時に修正テキストを事前に生成・保存
+        console.log('📝 [新] インタビュー完了 - 修正テキストを事前生成・保存中...');
+        try {
+          const apiUrl = API_URL;
+          const responses = newAnswersWithPhotos
+            .filter(ans => ans.text && ans.text.trim().length > 0)
+            .map(ans => ans.text);
+
+          if (responses.length > 0) {
+            console.log('🔄 AI修正API呼び出し:', responses.length, '件の回答');
+            const editResponse = await fetch(`${apiUrl}/api/ai/edit-text`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                responses,
+                stage: 'interview',
+                user_id: userId
+              })
+            });
+
+            if (editResponse.ok) {
+              const editData = await editResponse.json();
+              const editedContent = editData.edited_content;
+              console.log('✅ AI修正完了:', editedContent?.length, '文字');
+
+              // 修正テキストを biography に保存
+              console.log('💾 修正テキストを biography に保存中...');
+              const biographyResponse = await fetch(`${apiUrl}/api/biography`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  user_id: userId,
+                  edited_content: editedContent,
+                  ai_summary: editedContent
+                })
+              });
+
+              if (biographyResponse.ok) {
+                const biographyData = await biographyResponse.json();
+                console.log('✅ 修正テキストを biography に事前保存完了 - ID:', biographyData.data?.id);
+              } else {
+                console.warn('⚠️ 修正テキスト保存失敗（TextCorrectionPageで再生成）:', biographyResponse.status);
+              }
+            } else {
+              console.warn('⚠️ AI編集失敗（TextCorrectionPageで再生成）:', editResponse.status);
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ 修正テキスト事前生成エラー（TextCorrectionPageで再生成します）:', error);
         }
 
         // ✅ TextCorrectionPage へ遷移（AI編集が必要）
@@ -1064,8 +1119,14 @@ export default function InterviewPage({
 
           <button
             onClick={() => {
-              if (onCorrectionStart) {
-                onCorrectionStart(finalConversation, finalAnswersWithPhotos);
+              if (onAIGenerationStart) {
+                // ✅ 修正: answersWithPhotos に正確な text フィールドがあることを確認してから渡す
+                console.log('📊 AI生成に渡すanswersWithPhotos:', {
+                  count: answersWithPhotos.length,
+                  sample: answersWithPhotos[0],
+                  allHaveText: answersWithPhotos.every((a: any) => a.text && a.text.trim().length > 0)
+                });
+                onAIGenerationStart(answersWithPhotos);
               }
             }}
             style={{
@@ -1075,13 +1136,13 @@ export default function InterviewPage({
               marginBottom: '12px',
             }}
           >
-            AI自動修正を開始する
+            AI作成を開始する
           </button>
 
           <button
             onClick={() => {
-              if (onAIGenerationStart) {
-                onAIGenerationStart(answersWithPhotos);
+              if (onCorrectionStart) {
+                onCorrectionStart(finalConversation, finalAnswersWithPhotos);
               }
             }}
             style={{
@@ -1091,7 +1152,7 @@ export default function InterviewPage({
               width: '100%',
             }}
           >
-            修正をスキップしてAI作成へ進む
+            修正ページへ進む
           </button>
         </div>
       </div>

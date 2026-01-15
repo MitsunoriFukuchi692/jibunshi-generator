@@ -18,12 +18,14 @@ export default function AIGenerationPage({
   userId,
   token,
   answersWithPhotos,
+  correctedText,  // ✅ 新: TextCorrectionPage から修正テキストを受け取る
   userInfo,
   onComplete
 }: {
   userId: number;
   token: string | null;
   answersWithPhotos: Answer[];
+  correctedText?: string;  // ✅ 新: TextCorrectionPage から修正テキストを受け取る
   userInfo?: { name: string; age: number };
   onComplete: () => void;
 }) {
@@ -90,77 +92,89 @@ export default function AIGenerationPage({
   const generateAIBiography = async () => {
     try {
       setProgress(10);
-      console.log('🤖 AI作成開始...');
+      console.log('🤖 AI生成開始...');
       console.log('📊 回答数:', answersWithPhotos?.length || 0);
-      console.log('📋 サンプル回答:', answersWithPhotos?.[0]);
+      console.log('📋 修正テキスト受け取り:', !!correctedText);
+      console.log('📋 修正テキスト長:', correctedText?.length || 0);
 
       const apiUrl = API_URL;
       if (!apiUrl) throw new Error('API URLが設定されていません');
 
-      // ✅ ステップ1: 重要なできごとを抽出
-      console.log('🔍 重要なできごとを抽出...');
-      
-      // ✅ 修正：回答データの検証を強化
-      if (!answersWithPhotos || answersWithPhotos.length === 0) {
-        throw new Error('回答データが見つかりません。インタビューをやり直してください。');
-      }
+      // ✅ 修正：TextCorrectionPage から修正テキストを受け取っている場合
+      let editedContent: string;
 
-      // ✅ 修正：text フィールドが空でない回答だけを使用
-      const validAnswers = answersWithPhotos.filter((ans: Answer) => {
-        const hasText = ans.text && typeof ans.text === 'string' && ans.text.trim().length > 0;
-        if (!hasText) {
-          console.warn('⚠️ 空の回答を検出:', ans);
+      if (correctedText && correctedText.trim().length > 0) {
+        // TextCorrectionPage からの修正テキストを使用
+        console.log('✅ TextCorrectionPage からの修正テキストを使用');
+        editedContent = correctedText;
+        setProgress(50);
+      } else {
+        // TextCorrectionPage を経由していない場合（フォールバック）
+        console.log('⚠️ 修正テキストなし - AI生成を実行');
+        
+        // ステップ1: 重要なできごとを抽出
+        console.log('🔍 重要なできごとを抽出...');
+        
+        // ✅ 修正：回答データの検証を強化
+        if (!answersWithPhotos || answersWithPhotos.length === 0) {
+          throw new Error('回答データが見つかりません。インタビューをやり直してください。');
         }
-        return hasText;
-      });
 
-      console.log(`✅ 検証結果: ${validAnswers.length}/${answersWithPhotos.length} 件の有効な回答`);
+        // ✅ 修正：text フィールドが空でない回答だけを使用
+        const validAnswers = answersWithPhotos.filter((ans: Answer) => {
+          const hasText = ans.text && typeof ans.text === 'string' && ans.text.trim().length > 0;
+          if (!hasText) {
+            console.warn('⚠️ 空の回答を検出:', ans);
+          }
+          return hasText;
+        });
 
-      const importantEvents = validAnswers.filter((ans: Answer) => ans.isImportant);
-      const allResponses = validAnswers
-        .map((ans: Answer) => ans.text || '')
-        .filter(Boolean);
+        console.log(`✅ 検証結果: ${validAnswers.length}/${answersWithPhotos.length} 件の有効な回答`);
 
-      console.log('⭐ 重要なできごと数:', importantEvents.length);
-      console.log('📝 全回答テキスト数:', allResponses.length);
+        const allResponses = validAnswers
+          .map((ans: Answer) => ans.text || '')
+          .filter(Boolean);
 
-      if (allResponses.length === 0) {
-        throw new Error('有効な回答がありません。インタビューをやり直してください。');
-      }
+        console.log('📝 全回答テキスト数:', allResponses.length);
 
-      setProgress(20);
+        if (allResponses.length === 0) {
+          throw new Error('有効な回答がありません。インタビューをやり直してください。');
+        }
 
-      // ✅ ステップ2: AI編集エンドポイントを呼び出し（全回答をまとめた自分史）
-      console.log('🤖 AI編集APIにリクエスト送信...');
-      const editResponse = await fetch(`${apiUrl}/api/ai/edit-text`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          responses: allResponses,
-          stage: 'interview',
-          user_id: userId,
-          user_prompt: null
-        })
-      });
+        setProgress(20);
 
-      if (!editResponse.ok) {
-        const errorData = await editResponse.json();
-        throw new Error(`API error: ${editResponse.status} - ${errorData.error || 'Unknown error'}`);
-      }
+        // ステップ2: AI編集エンドポイントを呼び出し（全回答をまとめた自分史）
+        console.log('🤖 AI編集APIにリクエスト送信...');
+        const editResponse = await fetch(`${apiUrl}/api/ai/edit-text`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            responses: allResponses,
+            stage: 'interview',
+            user_id: userId,
+            user_prompt: null
+          })
+        });
 
-      setProgress(50);
+        if (!editResponse.ok) {
+          const errorData = await editResponse.json();
+          throw new Error(`API error: ${editResponse.status} - ${errorData.error || 'Unknown error'}`);
+        }
 
-      const editData = await editResponse.json();
-      const editedContent = editData.edited_content;
+        setProgress(50);
 
-      console.log('✅ AI作成完了');
-      console.log('📄 作成テキスト長:', editedContent?.length || 0);
+        const editData = await editResponse.json();
+        editedContent = editData.edited_content;
 
-      if (!editedContent || editedContent.trim().length === 0) {
-        throw new Error('AI生成テキストが空です。もう一度試してください。');
+        console.log('✅ AI作成完了');
+        console.log('📄 作成テキスト長:', editedContent?.length || 0);
+
+        if (!editedContent || editedContent.trim().length === 0) {
+          throw new Error('AI生成テキストが空です。もう一度試してください。');
+        }
       }
 
       setProgress(70);
@@ -169,7 +183,8 @@ export default function AIGenerationPage({
       // 重要: これは「全体の自分史」を保存するもので、timeline とは別
       console.log('🔹 biography リクエストを送信:', {
         url: `${apiUrl}/api/biography`,
-        token: !!token
+        token: !!token,
+        contentLength: editedContent.length
       });
 
       const biographyResponse = await fetch(`${apiUrl}/api/biography`, {
@@ -198,6 +213,7 @@ export default function AIGenerationPage({
       // ✅ ステップ4: 重要なできごとごとに timeline レコードを作成
       console.log('📚 重要なできごとをタイムラインに保存...');
 
+      const importantEvents = answersWithPhotos.filter((ans: Answer) => ans.isImportant);
       let savedCount = 0;
       const timelineIds: number[] = [];  // ✅ 新: timeline_id を保存
 

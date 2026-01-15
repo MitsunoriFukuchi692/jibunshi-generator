@@ -201,7 +201,32 @@ export default function PDFDisplayPage({
 
       setProgress(30);
 
-      // Step 2: PDF生成時に timeline を含める
+      // ✅ Step 1.5: biography から修正テキストを取得
+      console.log('📖 biography から修正テキストを取得中...');
+      let editedContent = '';
+      try {
+        const biographyResponse = await fetch(`${apiUrl}/api/biography`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (biographyResponse.ok) {
+          const biographyData = await biographyResponse.json();
+          editedContent = biographyData.data?.edited_content || '';
+          console.log('✅ 修正テキスト取得成功:', editedContent?.length, '文字');
+        } else {
+          console.warn('⚠️ biography 取得失敗:', biographyResponse.status);
+        }
+      } catch (error) {
+        console.warn('⚠️ biography 取得エラー:', error);
+      }
+
+      setProgress(40);
+
+      // Step 2: PDF生成時に timeline と修正テキストを含める
       console.log('🤖 PDF生成APIにリクエスト送信...');
       const response = await fetch(`${apiUrl}/api/pdf/generate`, {
         method: 'POST',
@@ -211,7 +236,8 @@ export default function PDFDisplayPage({
         },
         body: JSON.stringify({
           timelines: timelinesData,
-          answersWithPhotos: answersWithPhotos  // ✅ 修正された回答を送信
+          answersWithPhotos: answersWithPhotos,  // ✅ 修正された回答を送信
+          editedContent: editedContent  // ✅ 新：修正テキストを送信
         })
       });
 
