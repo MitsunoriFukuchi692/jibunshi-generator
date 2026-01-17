@@ -162,7 +162,7 @@ export default function UserPage({
     setError(null)
 
     try {
-      const response = await fetch(`${apiUrl}/api/users/login/verify-birthday`, {
+      const response = await fetch(`${apiUrl}/api/users/login/check-birthday`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
