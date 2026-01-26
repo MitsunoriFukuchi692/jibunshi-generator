@@ -1,26 +1,25 @@
 import { useState, useEffect } from 'react'
 import UserPage from './pages/UserPage'
+import HomeSelectionPage from './pages/HomeSelectionPage'
 import InterviewPage from './pages/InterviewPage'
 import AIGenerationPage from './pages/AIGenerationPage'
-import TextCorrectionPage from './pages/TextCorrectionPage'
-import CorrectedTextPage from './pages/CorrectedTextPage'
+import CorrectionPageV2 from './pages/CorrectionPageV2'
 import TimelineListPage from './pages/TimelineListPage'
 import PDFDisplayPage from './pages/PDFDisplayPage'
 import Header from './components/Common/Header'
+import { API_URL } from './config'
 import './App.css'
 
 function App() {
-  // ✅ TurningPointPage を削除（不要）
-  const [currentPage, setCurrentPage] = useState<'user' | 'interview' | 'aiGeneration' | 'correction' | 'corrected' | 'timelineList' | 'pdfDisplay'>('user')
+  const [currentPage, setCurrentPage] = useState<'user' | 'home' | 'interview' | 'aiGeneration' | 'correction' | 'timelineList' | 'pdfDisplay'>('user')
   const [userId, setUserId] = useState<number | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [userInfo, setUserInfo] = useState<{ name: string; age: number } | undefined>()
   const [isInitialized, setIsInitialized] = useState(false)
   const [interviewConversation, setInterviewConversation] = useState<any[]>([])
   const [interviewAnswersWithPhotos, setInterviewAnswersWithPhotos] = useState<any[]>([])
-  const [correctedText, setCorrectedText] = useState<string>('')  // ✅ 新：修正テキストを保存
 
-  // ① localStorage から userId と token を取得（初期化）
+  // Initialize from localStorage
   useEffect(() => {
     const storedUserId = localStorage.getItem('userId')
     const storedToken = localStorage.getItem('token')
@@ -43,20 +42,20 @@ function App() {
     setIsInitialized(true)
   }, [])
 
-  // ② hash に基づいてページを切り替え
+  // Handle hash-based routing
   useEffect(() => {
     if (!isInitialized) return
 
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1)
-      if (hash === 'interview') {
+      if (hash === 'home') {
+        setCurrentPage('home')
+      } else if (hash === 'interview') {
         setCurrentPage('interview')
       } else if (hash === 'aiGeneration') {
         setCurrentPage('aiGeneration')
       } else if (hash === 'correction') {
         setCurrentPage('correction')
-      } else if (hash === 'corrected') {
-        setCurrentPage('corrected')
       } else if (hash === 'timelineList') {
         setCurrentPage('timelineList')
       } else if (hash === 'pdfDisplay') {
@@ -71,97 +70,155 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [isInitialized])
 
+  // ✅ UserPage ログイン後、home へ遷移
+  const handleUserLoginSuccess = (userId: number, token: string, userInfo: { name: string; age: number }) => {
+    setUserId(userId)
+    setToken(token)
+    setUserInfo(userInfo)
+    window.location.hash = 'home'
+  }
+
+  // ✅ HomeSelectionPage: 新規作成
+  const handleNewInterview = () => {
+    console.log('[Router] 新規インタビュー開始 → interview')
+    window.location.hash = 'interview'
+  }
+
+  // ✅ HomeSelectionPage: 続行（既存セッション復元）
+  const handleContinueInterview = () => {
+    console.log('[Router] 途中保存から続行 → interview')
+    // localStorage に フラグを設定して、InterviewPage で復元させる
+    localStorage.setItem('resumeSession', 'true')
+    window.location.hash = 'interview'
+  }
+
+  // ✅ HomeSelectionPage: 回答を修正
+  const handleEditCorrection = async () => {
+    console.log('[Router] 回答を修正 → correction')
+    // セッションデータを読み込んでから遷移
+    try {
+      const response = await fetch(`${API_URL}/api/interview-session/load`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        const session = await response.json()
+        console.log('[Router] セッション読み込み成功:', session)
+        setInterviewConversation(session.conversation)
+        setInterviewAnswersWithPhotos(session.answersWithPhotos)
+        window.location.hash = 'correction'
+      } else {
+        alert('セッション読み込みに失敗しました')
+      }
+    } catch (err) {
+      console.error('[Router] セッション読み込みエラー:', err)
+      alert('エラーが発生しました')
+    }
+  }
+
+  // ✅ HomeSelectionPage: データ編集
+  const handleEditTimeline = () => {
+    console.log('[Router] データ編集 → timelineList')
+    window.location.hash = 'timelineList'
+  }
+
   return (
     <div className="app">
       <Header currentPage={currentPage} onPageChange={setCurrentPage} />
       <main className="main-content">
-        {/* ページ1: ユーザーログイン */}
+        {/* Page 1: User Login */}
         {currentPage === 'user' && (
           <UserPage
             userId={userId}
             setUserId={setUserId}
             setToken={setToken}
             setUserInfo={setUserInfo}
+            onLoginSuccess={handleUserLoginSuccess}
           />
         )}
 
-        {/* ページ2: インタビュー（19問） */}
+        {/* Page 1.5: Home Selection (New) */}
+        {currentPage === 'home' && userId && token && (
+          <HomeSelectionPage
+            userId={userId}
+            token={token}
+            userInfo={userInfo}
+            onNewInterview={handleNewInterview}
+            onContinueInterview={handleContinueInterview}
+            onEditTimeline={handleEditTimeline}
+            onEditCorrection={handleEditCorrection}
+          />
+        )}
+
+        {/* Page 2: Interview (19 Questions) */}
         {currentPage === 'interview' && userId && token && (
           <InterviewPage
             userId={userId}
             token={token}
             userInfo={userInfo}
             onCorrectionStart={(conversation, answersWithPhotos) => {
-              setInterviewConversation(conversation);
-              setInterviewAnswersWithPhotos(answersWithPhotos);
-              window.location.hash = 'correction';
+              setInterviewConversation(conversation)
+              setInterviewAnswersWithPhotos(answersWithPhotos)
+              console.log('[Router] Moving to correction page:', {
+                conversationLength: conversation.length,
+                answersCount: answersWithPhotos.length
+              })
+              window.location.hash = 'correction'
             }}
             onAIGenerationStart={(answersWithPhotos) => {
-              console.log('🚀 AIGenerationPage へ遷移:', answersWithPhotos.length, '件の回答');
-              setInterviewAnswersWithPhotos(answersWithPhotos);
-              window.location.hash = 'aiGeneration';
+              setInterviewAnswersWithPhotos(answersWithPhotos)
+              console.log('[Router] Moving to AI generation:', answersWithPhotos.length, 'answers')
+              window.location.hash = 'aiGeneration'
             }}
           />
         )}
 
-        {/* ページ3: AI自動生成（timeline + biography作成） */}
+        {/* Page 3: AI Generation (Timeline + Biography) */}
         {currentPage === 'aiGeneration' && userId && token && userInfo && (
           <AIGenerationPage
             userId={userId}
             token={token}
             answersWithPhotos={interviewAnswersWithPhotos}
-            correctedText={correctedText}  // ✅ 修正：修正テキストを渡す
+            correctedText=""
             userInfo={userInfo}
             onComplete={() => {
-              console.log('✅ AI生成完了 → PDFDisplay へ');
-              window.location.hash = 'pdfDisplay';  // timelineList ではなく pdfDisplay へ
+              console.log('[Router] AI generation complete → PDF display')
+              window.location.hash = 'pdfDisplay'
             }}
           />
         )}
 
-        {/* ページ4: テキスト修正 */}
+        {/* Page 4: Correction & Editing (Integrated Page) */}
         {currentPage === 'correction' && userId && token && (
-          <TextCorrectionPage
+          <CorrectionPageV2
             userId={userId}
             token={token}
             conversation={interviewConversation}
             answersWithPhotos={interviewAnswersWithPhotos}
-            onComplete={(editedContent) => {
-              console.log('✅ TextCorrectionPage 完了 - 修正テキスト受け取り:', editedContent?.length, '文字');
-              setCorrectedText(editedContent || '');
-              setTimeout(() => {
-                window.location.hash = 'aiGeneration';
-              }, 100);
+            onComplete={() => {
+              console.log('[Router] Correction complete → PDF display')
+              window.location.hash = 'pdfDisplay'
             }}
           />
         )}
 
-        {/* ページ5: 修正済みテキスト確認・修正 */}
-        {currentPage === 'corrected' && userId && token && (
-          <CorrectedTextPage
-            userId={userId}
-            token={token}
-            onTimelineListStart={() => {
-              console.log('📋 CorrectedTextPage スキップ → TimelineListPage へ');
-              window.location.hash = 'timelineList';  // そのまま timelineList へ
-            }}
-          />
-        )}
-
-        {/* ページ6: 人生年表一覧（追加・編集・削除） */}
+        {/* Page 5: Timeline List (Edit/Add/Delete) */}
         {currentPage === 'timelineList' && userId && token && (
           <TimelineListPage
             userId={userId}
             token={token}
-            userInfo={userInfo || { name: '（名前未設定）', age: 0 }}
+            userInfo={userInfo || { name: 'N/A', age: 0 }}
             onComplete={() => {
-              console.log('✅ 年表確認完了 → PDFDisplay へ遷移');
-              window.location.hash = 'pdfDisplay';
+              console.log('[Router] Timeline list complete → PDF display')
+              window.location.hash = 'pdfDisplay'
             }}
           />
         )}
 
-        {/* ページ7: PDF表示・ダウンロード（修正版：生インタビュー画面） */}
+        {/* Page 6: PDF Display & Download */}
         {currentPage === 'pdfDisplay' && userId && token && userInfo && (
           <PDFDisplayPage
             userId={userId}
@@ -169,8 +226,7 @@ function App() {
             userInfo={userInfo}
             answersWithPhotos={interviewAnswersWithPhotos}
             onComplete={() => {
-              // 完了後の処理（例：ホームに戻る）
-              window.location.hash = 'user';
+              window.location.hash = 'user'
             }}
           />
         )}

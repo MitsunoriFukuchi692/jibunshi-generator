@@ -190,6 +190,17 @@ export default function InterviewPage({
     const SESSION_VERSION = 2;  // ✅ バージョン定数
 
     const restoreSession = async () => {
+      // ✅ 修正：保存庫から戻ってきた場合、セッションを強制再読み込み
+      const shouldReload = localStorage.getItem('reloadInterviewSession');
+      if (shouldReload) {
+        console.log('🔄 保存庫から戻ってきたため、セッションを強制再読み込みしています...');
+        localStorage.removeItem('reloadInterviewSession');
+        // 状態をリセットして、サーバーから必ず新しいセッションを取得
+        setConversation([]);
+        setAnswersWithPhotos([]);
+        setCurrentQuestionIndex(0);
+      }
+
       // ① まずサーバーから復元を試みる（優先）
       if (token && userId) {
         try {
@@ -787,6 +798,7 @@ export default function InterviewPage({
         setSavingStatus(null);
         alert('✅ 進捗をサーバーに保存しました。\n次に再開した時に途中から続けられます。');
         setUnsavedChanges(false);
+        window.location.hash = 'home';
       }, 500);
 
     } catch (error) {

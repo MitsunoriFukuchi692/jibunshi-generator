@@ -6,6 +6,7 @@ interface UserPageProps {
   setUserId: (id: number) => void
   setToken: (token: string) => void
   setUserInfo: (info: { name: string; age: number }) => void
+  onLoginSuccess?: (userId: number, token: string, userInfo: { name: string; age: number }) => void
 }
 
 type Step = 'choice' | 'login-name' | 'login-birthday' | 'login-pin' | 'register-info' | 'register-confirm' | 'forgot-pin-start' | 'forgot-pin-birthday' | 'forgot-pin-new'
@@ -36,7 +37,8 @@ export default function UserPage({
   userId, 
   setUserId, 
   setToken,
-  setUserInfo
+  setUserInfo,
+  onLoginSuccess
 }: UserPageProps) {
   // ✅ ステップ管理
   const [step, setStep] = useState<Step>('choice')
@@ -228,39 +230,12 @@ export default function UserPage({
       setToken(data.token)
       setUserInfo({ name: data.user.name, age: data.user.age || 0 })
 
-      // ✅ 修正：インタビューデータの有無を確認
-      // データなし → インタビューページへ遷移
-      // データあり → 年表確認ページへ遷移
-      try {
-        const interviewCheckResponse = await fetch(`${apiUrl}/api/interview-session/load`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${data.token}`
-          }
-        })
-
-        if (interviewCheckResponse.ok) {
-          const session = await interviewCheckResponse.json()
-          
-          // インタビューデータが存在するか確認
-          if (session.answersWithPhotos && session.answersWithPhotos.length > 0) {
-            // ✅ データあり → 年表確認ページへ
-            console.log('✅ インタビュー済み → TimelineListPage へ')
-            window.location.hash = 'timelineList'
-          } else {
-            // ✅ データなし → インタビューページへ
-            console.log('📝 インタビュー未実施 → InterviewPage へ')
-            window.location.hash = 'interview'
-          }
-        } else {
-          // データなし → インタビューページへ
-          console.log('📝 インタビューデータ未取得 → InterviewPage へ')
-          window.location.hash = 'interview'
-        }
-      } catch (err) {
-        // エラー時はインタビューページへ遷移（安全な選択）
-        console.warn('⚠️ インタビューデータ確認エラー:', err)
-        window.location.hash = 'interview'
+      // ✅ 修正：onLoginSuccess コールバックを呼び出す（あれば）
+      if (onLoginSuccess) {
+        onLoginSuccess(data.userId, data.token, { name: data.user.name, age: data.user.age || 0 })
+      } else {
+        // フォールバック：ホームページへ遷移
+        window.location.hash = 'home'
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ログインに失敗しました。')
@@ -270,49 +245,53 @@ export default function UserPage({
   }
 
   // ============================================
-  // 新規登録: 情報入力
+  // 新規登録: 情報確認
   // ============================================
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegisterConfirm = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-
-    // バリデーション
     if (!regName.trim()) {
       setError('お名前を入力してください。')
       return
     }
-
-    if (!regAge || isNaN(parseInt(regAge)) || parseInt(regAge) < 1 || parseInt(regAge) > 120) {
-      setError('正しい年齢を入力してください（1～120）。')
+    if (!regAge.trim() || parseInt(regAge) < 1 || parseInt(regAge) > 120) {
+      setError('有効な年齢を入力してください。')
       return
     }
-
     if (!regBirthMonth || !regBirthDay) {
-      setError('生年月日（月・日）を入力してください。')
+      setError('生年月日を入力してください。')
       return
     }
-
-    const month = parseInt(regBirthMonth)
-    const day = parseInt(regBirthDay)
-
-    if (month < 1 || month > 12 || day < 1 || day > 31) {
-      setError('正しい生年月日を入力してください。')
-      return
-    }
-
-    if (!regPin.trim() || regPin.length !== 4 || !/^\d{4}$/.test(regPin)) {
-      setError('PINは4桁の数字で入力してください。')
-      return
-    }
-
     if (regPin !== regPinConfirm) {
       setError('PINが一致しません。')
       return
     }
+    if (regPin.length !== 4) {
+      setError('PINは4桁である必要があります。')
+      return
+    }
+
+    setStep('register-confirm')
+  }
+
+  // ============================================
+  // 新規登録: 実行
+  // ============================================
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
 
     setLoading(true)
+    setError(null)
 
     try {
+      const month = parseInt(regBirthMonth)
+      const day = parseInt(regBirthDay)
+
+      if (month < 1 || month > 12 || day < 1 || day > 31) {
+        setError('正しい生年月日を入力してください。')
+        setLoading(false)
+        return
+      }
+
       const response = await fetch(`${apiUrl}/api/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -343,8 +322,13 @@ export default function UserPage({
       setToken(data.token)
       setUserInfo({ name: data.user.name, age: data.user.age || 0 })
 
-      // インタビューページへ遷移
-      window.location.hash = 'interview'
+      // ✅ 修正：onLoginSuccess コールバックを呼び出す（あれば）
+      if (onLoginSuccess) {
+        onLoginSuccess(data.userId, data.token, { name: data.user.name, age: data.user.age || 0 })
+      } else {
+        // フォールバック：ホームページへ遷移
+        window.location.hash = 'home'
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '登録に失敗しました。')
     } finally {
@@ -380,6 +364,10 @@ export default function UserPage({
         return
       }
 
+      if (data.count === 1) {
+        setLoginUserId(data.userId)
+      }
+
       setStep('forgot-pin-birthday')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'エラーが発生しました。')
@@ -393,35 +381,33 @@ export default function UserPage({
   // ============================================
   const handleForgotPinReset = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-
     if (!forgotBirthMonth || !forgotBirthDay) {
-      setError('生年月日（月・日）を入力してください。')
+      setError('生年月日を入力してください。')
       return
     }
-
-    const month = parseInt(forgotBirthMonth)
-    const day = parseInt(forgotBirthDay)
-
-    if (month < 1 || month > 12 || day < 1 || day > 31) {
-      setError('正しい生年月日を入力してください。')
-      return
-    }
-
-    if (!forgotNewPin.trim() || forgotNewPin.length !== 4 || !/^\d{4}$/.test(forgotNewPin)) {
-      setError('新しいPINは4桁の数字で入力してください。')
-      return
-    }
-
     if (forgotNewPin !== forgotNewPinConfirm) {
       setError('新しいPINが一致しません。')
       return
     }
+    if (forgotNewPin.length !== 4) {
+      setError('PINは4桁である必要があります。')
+      return
+    }
 
     setLoading(true)
+    setError(null)
 
     try {
-      const response = await fetch(`${apiUrl}/api/users/login/forgot-pin`, {
+      const month = parseInt(forgotBirthMonth)
+      const day = parseInt(forgotBirthDay)
+
+      if (month < 1 || month > 12 || day < 1 || day > 31) {
+        setError('正しい生年月日を入力してください。')
+        setLoading(false)
+        return
+      }
+
+      const response = await fetch(`${apiUrl}/api/users/reset-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -429,57 +415,67 @@ export default function UserPage({
           birthMonth: month,
           birthDay: day,
           newPin: forgotNewPin,
+          deviceId: deviceId
         }),
       })
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'PIN変更に失敗しました。')
+        throw new Error(data.error || 'PINリセットに失敗しました。')
       }
 
-      setError(null)
-      setStep('choice')
-      setForgotName('')
-      setForgotBirthMonth('')
-      setForgotBirthDay('')
-      setForgotNewPin('')
-      setForgotNewPinConfirm('')
+      const data = await response.json()
+
+      // ✅ PIN リセット成功 - ログイン状態にする
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('userId', data.userId)
+      localStorage.setItem('userInfo', JSON.stringify(data.user))
+      localStorage.setItem('deviceId', deviceId)
+
+      setUserId(data.userId)
+      setToken(data.token)
+      setUserInfo({ name: data.user.name, age: data.user.age || 0 })
+
+      // ✅ 修正：onLoginSuccess コールバックを呼び出す（あれば）
+      if (onLoginSuccess) {
+        onLoginSuccess(data.userId, data.token, { name: data.user.name, age: data.user.age || 0 })
+      } else {
+        // フォールバック：ホームページへ遷移
+        window.location.hash = 'home'
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'PIN変更に失敗しました。')
+      setError(err instanceof Error ? err.message : 'PINリセットに失敗しました。')
     } finally {
       setLoading(false)
     }
   }
 
   // ============================================
-  // UI: 初期選択画面
+  // UI: 選択画面
   // ============================================
   if (step === 'choice') {
     return (
       <div className="user-page">
         <div className="user-container">
-          <h1>📚 自分史作成アプリ</h1>
-          <p className="subtitle">ログインまたは新規登録してください</p>
+          <h1>📖 自分史ジェネレーター</h1>
+          <p className="subtitle">人生を記録しよう</p>
 
           <div className="button-group">
             <button
               onClick={handleChoiceLogin}
               className="btn-primary"
-              disabled={loading}
             >
               ログイン
             </button>
             <button
               onClick={handleChoiceRegister}
               className="btn-secondary"
-              disabled={loading}
             >
               新規登録
             </button>
             <button
               onClick={handleChoiceForgotPin}
               className="btn-tertiary"
-              disabled={loading}
             >
               PINをリセット
             </button>
@@ -498,7 +494,7 @@ export default function UserPage({
     return (
       <div className="user-page">
         <div className="user-container">
-          <h1>📚 ログイン</h1>
+          <h1>📖 ログイン</h1>
           <p className="subtitle">お名前を入力してください</p>
 
           <form onSubmit={handleLoginNameCheck}>
@@ -544,27 +540,14 @@ export default function UserPage({
   }
 
   // ============================================
-  // UI: ログイン - 月日確認
+  // UI: ログイン - 月日入力
   // ============================================
   if (step === 'login-birthday') {
     return (
       <div className="user-page">
         <div className="user-container">
-          <h1>📚 ログイン</h1>
+          <h1>📖 ログイン</h1>
           <p className="subtitle">生年月日を入力してください</p>
-
-          {loginCandidates.length > 0 && (
-            <div className="candidates-info">
-              <p>同じお名前の方が複数おられます：</p>
-              <ul>
-                {loginCandidates.map((candidate) => (
-                  <li key={candidate.id}>
-                    {candidate.name} 様（{candidate.birthMonth}月{candidate.birthDay}日生まれ、{candidate.age}歳）
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           <form onSubmit={handleLoginBirthdayVerify}>
             <div className="form-group">
@@ -601,7 +584,6 @@ export default function UserPage({
                   setStep('login-name')
                   setLoginBirthMonth('')
                   setLoginBirthDay('')
-                  setLoginCandidates([])
                   setError(null)
                 }}
                 className="btn-secondary"
@@ -632,14 +614,14 @@ export default function UserPage({
     return (
       <div className="user-page">
         <div className="user-container">
-          <h1>📚 ログイン</h1>
-          <p className="subtitle">PIN（4桁）を入力してください</p>
+          <h1>📖 ログイン</h1>
+          <p className="subtitle">PINを入力してください</p>
 
           <form onSubmit={handleLoginPinVerify}>
             <div className="form-group">
               <label>PIN（4桁の数字）</label>
               <input
-                type="password"
+                type="text"
                 value={loginPin}
                 onChange={(e) => setLoginPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 placeholder="例：1234"
@@ -688,7 +670,7 @@ export default function UserPage({
           <h1>📚 新規登録</h1>
           <p className="subtitle">以下の情報を入力してください</p>
 
-          <form onSubmit={handleRegister}>
+          <form onSubmit={handleRegisterConfirm}>
             <div className="form-group">
               <label>お名前</label>
               <input
@@ -787,10 +769,54 @@ export default function UserPage({
                 className="btn-primary"
                 disabled={loading}
               >
-                {loading ? '登録中...' : '登録'}
+                {loading ? '確認中...' : '次へ'}
               </button>
             </div>
           </form>
+
+          {error && <div className="error-message">{error}</div>}
+        </div>
+      </div>
+    )
+  }
+
+  // ============================================
+  // UI: 新規登録 - 確認
+  // ============================================
+  if (step === 'register-confirm') {
+    return (
+      <div className="user-page">
+        <div className="user-container">
+          <h1>📚 新規登録確認</h1>
+          <p className="subtitle">以下の内容で登録します。よろしいですか？</p>
+
+          <div className="confirm-box">
+            <p><strong>お名前:</strong> {regName}</p>
+            <p><strong>年齢:</strong> {regAge}歳</p>
+            <p><strong>生年月日:</strong> {regBirthMonth}月{regBirthDay}日</p>
+          </div>
+
+          <div className="button-group">
+            <button
+              type="button"
+              onClick={() => {
+                setStep('register-info')
+                setError(null)
+              }}
+              className="btn-secondary"
+              disabled={loading}
+            >
+              戻る
+            </button>
+            <button
+              type="submit"
+              onClick={handleRegister}
+              className="btn-primary"
+              disabled={loading}
+            >
+              {loading ? '登録中...' : '登録'}
+            </button>
+          </div>
 
           {error && <div className="error-message">{error}</div>}
         </div>
