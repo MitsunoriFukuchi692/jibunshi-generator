@@ -54,7 +54,7 @@ export default function TimelineListPage({
         
         const data = await response.json()
         console.log('✅ Timeline data received:', data)
-        setEvents(data.events || [])
+        setEvents(data || [])
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : '年表の読み込みに失敗しました'
         setError(errorMessage)
