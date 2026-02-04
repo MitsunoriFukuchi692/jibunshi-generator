@@ -1,0 +1,591 @@
+/* 📝 データ編集ページ */
+
+.timeline-edit-page {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.timeline-edit-page h1 {
+  font-size: 28px;
+  color: #2c3e50;
+  margin: 0 0 20px 0;
+}
+
+.timeline-edit-info {
+  background-color: #e8f4f8;
+  border-left: 4px solid #3498db;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.timeline-edit-info p {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.error-message {
+  background-color: #fadbd8;
+  border-left: 4px solid #c0392b;
+  color: #c0392b;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  font-weight: 500;
+}
+
+.page-loading {
+  text-align: center;
+  padding: 40px;
+  color: #7f8c8d;
+}
+
+/* ========================================
+   左右レイアウト：記録一覧 + 編集フォーム
+   ======================================== */
+
+.timeline-edit-container {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+/* 左側：記録一覧 */
+.timeline-edit-list {
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-height: 800px;
+  overflow-y: auto;
+}
+
+.timeline-edit-list h2 {
+  font-size: 18px;
+  color: #2c3e50;
+  margin: 0 0 15px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+/* ========== タイムラインセクション ========== */
+.timeline-list-section {
+  margin-bottom: 30px;
+}
+
+.timeline-list-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 15px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #3498db;
+}
+
+/* ========== セッション（進行中）アイテム ========== */
+.session-list-item-wrapper {
+  margin-bottom: 15px;
+}
+
+.session-list-item {
+  padding: 15px;
+  background: linear-gradient(135deg, #e8f4f8 0%, #f0f9fc 100%);
+  border-left: 4px solid #3498db;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 10px;
+}
+
+.session-list-item:hover {
+  background: linear-gradient(135deg, #d6eaf8 0%, #e8f5fb 100%);
+  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
+}
+
+.session-list-item.active {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: white;
+  font-weight: 600;
+}
+
+.session-progress,
+.session-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.session-progress:last-child,
+.session-info:last-child {
+  margin-bottom: 0;
+}
+
+.progress-label,
+.info-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.progress-value,
+.info-value {
+  font-size: 14px;
+  font-weight: bold;
+  color: inherit;
+}
+
+.session-list-item.active .progress-label,
+.session-list-item.active .info-label,
+.session-list-item.active .progress-value,
+.session-list-item.active .info-value {
+  color: white;
+}
+
+/* ========== 質問リスト ========== */
+.questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.question-item {
+  padding: 10px 12px;
+  background-color: #f8f9fa;
+  border-left: 3px solid #ecf0f1;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.question-item:hover {
+  background-color: #e8f4f8;
+  border-left-color: #3498db;
+}
+
+.question-item.active {
+  background-color: #d6eaf8;
+  border-left-color: #3498db;
+  font-weight: 500;
+}
+
+.question-number {
+  font-size: 12px;
+  font-weight: 700;
+  color: #3498db;
+  min-width: 35px;
+  padding: 2px 6px;
+  background-color: white;
+  border-radius: 3px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.question-preview {
+  font-size: 13px;
+  color: #7f8c8d;
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* ========== イベント情報セクション ========== */
+.event-info-section {
+  background-color: #fff3cd;
+  border-left: 4px solid #ffc107;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 15px;
+}
+
+.event-info-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background-color: #fffbf0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.event-info-item:hover {
+  background-color: #fff9e6;
+}
+
+.event-info-item.active {
+  background-color: #ffc107;
+  color: white;
+}
+
+.event-info-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.event-info-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ========== イベントリスト ========== */
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.event-list-item {
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-left: 3px solid #ecf0f1;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.event-list-item:hover {
+  background-color: #e8f4f8;
+  border-left-color: #3498db;
+}
+
+.event-list-item.active {
+  background-color: #d6eaf8;
+  border-left-color: #3498db;
+  font-weight: 600;
+}
+
+.event-list-year {
+  font-size: 12px;
+  color: #7f8c8d;
+  margin-bottom: 5px;
+}
+
+.event-list-title {
+  font-size: 14px;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.no-events {
+  color: #95a5a6;
+  text-align: center;
+  padding: 30px 10px;
+}
+
+/* ========== 右側：編集フォーム ========== */
+.timeline-edit-form-container {
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-height: 800px;
+  overflow-y: auto;
+}
+
+.edit-form h2 {
+  font-size: 18px;
+  color: #2c3e50;
+  margin: 0 0 20px 0;
+}
+
+.info-box {
+  background-color: #e8f4f8;
+  border-left: 4px solid #3498db;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.info-box p {
+  margin: 5px 0;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+/* ========== 質問内容表示 ========== */
+.question-full {
+  background-color: #f8f9fa;
+  border-left: 4px solid #3498db;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.question-text {
+  font-size: 16px;
+  color: #2c3e50;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ========== インタビューフォーム専用 ========== */
+.interview-form {
+  max-height: 700px;
+  overflow-y: auto;
+}
+
+/* ========== フォーム要素 ========== */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 8px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 10px;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 4px rgba(52, 152, 219, 0.3);
+}
+
+.form-group small {
+  font-size: 11px;
+  color: #7f8c8d;
+  margin-top: 5px;
+}
+
+.answer-textarea {
+  padding: 12px;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.answer-textarea:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 4px rgba(52, 152, 219, 0.3);
+}
+
+/* ========== 写真セクション ========== */
+.photos-section {
+  background-color: #f8f9fa;
+  border-left: 4px solid #27ae60;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.photos-section label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.photos-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.photo-item {
+  border: 2px solid #ecf0f1;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: white;
+}
+
+.photo-item img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  display: block;
+}
+
+/* ========== ボタン ========== */
+.button-group {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ecf0f1;
+}
+
+.btn-save {
+  background-color: #27ae60;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn-save:hover {
+  background-color: #229954;
+}
+
+.btn-delete {
+  background-color: #e74c3c;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn-delete:hover {
+  background-color: #c0392b;
+}
+
+.btn-cancel {
+  background-color: #95a5a6;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel:hover {
+  background-color: #7f8c8d;
+}
+
+.no-selection {
+  text-align: center;
+  padding: 60px 20px;
+  color: #95a5a6;
+  font-size: 16px;
+}
+
+.navigation-buttons {
+  text-align: center;
+  margin-top: 30px;
+}
+
+.btn-back {
+  background-color: #3498db;
+  color: white;
+  padding: 12px 30px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.btn-back:hover {
+  background-color: #2980b9;
+}
+
+/* ========================================
+   レスポンシブ：タブレット・スマートフォン
+   ======================================== */
+
+@media (max-width: 1024px) {
+  .timeline-edit-container {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .timeline-edit-list {
+    max-height: 400px;
+  }
+
+  .timeline-edit-form-container {
+    max-height: 500px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .button-group {
+    justify-content: center;
+  }
+
+  .photos-list {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .timeline-edit-page {
+    padding: 10px;
+  }
+
+  .timeline-edit-page h1 {
+    font-size: 22px;
+  }
+
+  .timeline-edit-list h2,
+  .edit-form h2 {
+    font-size: 16px;
+  }
+
+  .timeline-list-section h3 {
+    font-size: 14px;
+  }
+
+  .form-group {
+    margin-bottom: 12px;
+  }
+
+  .button-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .btn-save,
+  .btn-delete,
+  .btn-cancel {
+    width: 100%;
+  }
+
+  .photos-list {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  }
+
+  .photo-item img {
+    height: 70px;
+  }
+}

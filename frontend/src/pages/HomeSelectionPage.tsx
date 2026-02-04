@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
 import { API_URL } from '../config'
 
-interface SessionInfo {
-  sessionId: number
-  userId: number
+interface SessionData {
   currentQuestionIndex: number
-  conversationSize: string
-  answersSize: string
-  timestamp: string
-  createdAt: string
+  conversation: any[]
+  answersWithPhotos: any[]
+  eventTitle?: string
+  eventYear?: number
+  eventMonth?: number
+  timestamp: number
   updatedAt: string
-  age: string
 }
 
 export default function HomeSelectionPage({
@@ -30,14 +29,14 @@ export default function HomeSelectionPage({
   onEditTimeline: () => void
   onEditCorrection?: () => void
 }) {
-  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
+  const [sessionData, setSessionData] = useState<SessionData | null>(null)
   const [hasSession, setHasSession] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // セッション情報を取得
+  // ✅ 修正：/api/interview-session/load を使用してセッションデータを取得
   useEffect(() => {
-    const fetchSessionInfo = async () => {
+    const fetchSessionData = async () => {
       try {
         if (!token) {
           setError('認証トークンがありません')
@@ -46,7 +45,7 @@ export default function HomeSelectionPage({
         }
 
         const apiUrl = API_URL
-        const response = await fetch(`${apiUrl}/api/interview-session/info`, {
+        const response = await fetch(`${apiUrl}/api/interview-session/load`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -56,9 +55,19 @@ export default function HomeSelectionPage({
 
         if (response.ok) {
           const data = await response.json()
-          console.log('✅ セッション情報取得成功:', data)
-          setSessionInfo(data.data)
-          setHasSession(true)
+          console.log('✅ セッション取得成功:', {
+            currentQuestion: data.currentQuestionIndex,
+            answers: data.answersWithPhotos?.length || 0
+          })
+          
+          // currentQuestionIndex が 0 より大きい場合のみセッションありと判定
+          if (data.currentQuestionIndex > 0) {
+            setSessionData(data)
+            setHasSession(true)
+          } else {
+            console.log('ℹ️ セッションなし（新規作成の状態）')
+            setHasSession(false)
+          }
         } else if (response.status === 404) {
           console.log('ℹ️ セッションなし（新規作成の状態）')
           setHasSession(false)
@@ -66,14 +75,16 @@ export default function HomeSelectionPage({
           throw new Error(`エラー: ${response.status}`)
         }
       } catch (err) {
-        console.error('❌ セッション情報取得エラー:', err)
+        console.error('❌ セッション取得エラー:', err)
+        // エラーの場合も「セッションなし」として扱う（新規作成可能）
+        setHasSession(false)
         setError(err instanceof Error ? err.message : '不明なエラーが発生しました')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchSessionInfo()
+    fetchSessionData()
   }, [token, userId])
 
   if (loading) {
@@ -103,7 +114,7 @@ export default function HomeSelectionPage({
 
         {/* メインコンテンツ */}
         <div style={styles.mainContent}>
-          {hasSession && sessionInfo ? (
+          {hasSession && sessionData ? (
             <>
               {/* セッション情報表示 */}
               <div style={styles.sessionInfoBox}>
@@ -113,16 +124,20 @@ export default function HomeSelectionPage({
                   <div style={styles.infoItem}>
                     <span style={styles.infoLabel}>進捗状況:</span>
                     <span style={styles.infoValue}>
-                      {sessionInfo.currentQuestionIndex} / 19 問目
+                      {sessionData.currentQuestionIndex} / 19 問目
+                    </span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>回答数:</span>
+                    <span style={styles.infoValue}>
+                      {sessionData.answersWithPhotos?.length || 0} 個
                     </span>
                   </div>
                   <div style={styles.infoItem}>
                     <span style={styles.infoLabel}>最終更新:</span>
-                    <span style={styles.infoValue}>{sessionInfo.updatedAt}</span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>保存年齢:</span>
-                    <span style={styles.infoValue}>{sessionInfo.age}</span>
+                    <span style={styles.infoValue}>
+                      {sessionData.updatedAt ? new Date(sessionData.updatedAt).toLocaleString('ja-JP') : '不明'}
+                    </span>
                   </div>
                 </div>
 

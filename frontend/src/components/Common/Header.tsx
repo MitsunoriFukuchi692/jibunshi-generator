@@ -1,6 +1,6 @@
 interface HeaderProps {
-  currentPage: 'user' | 'interview' | 'publisher' | 'corrected'
-  onPageChange: (page: 'user' | 'interview' | 'publisher' | 'corrected') => void
+  currentPage: 'user' | 'record-nav'
+  onPageChange: (page: 'user' | 'record-nav') => void
 }
 
 export default function Header({ currentPage, onPageChange }: HeaderProps) {
@@ -21,29 +21,11 @@ export default function Header({ currentPage, onPageChange }: HeaderProps) {
           <button
             style={{
               ...styles.navButton,
-              ...(currentPage === 'interview' ? styles.navButtonActive : {}),
+              ...(currentPage === 'record-nav' ? styles.navButtonActive : {}),
             }}
-            onClick={() => onPageChange('interview')}
+            onClick={() => onPageChange('record-nav')}
           >
-            聞き取り
-          </button>
-          <button
-            style={{
-              ...styles.navButton,
-              ...(currentPage === 'corrected' ? styles.navButtonActive : {}),
-            }}
-            onClick={() => onPageChange('corrected')}
-          >
-            保存庫
-          </button>
-          <button
-            style={{
-              ...styles.navButton,
-              ...(currentPage === 'publisher' ? styles.navButtonActive : {}),
-            }}
-            onClick={() => onPageChange('publisher')}
-          >
-            出版社管理
+            記録ナビ
           </button>
         </nav>
       </div>

@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react'
 import UserPage from './pages/UserPage'
 import HomeSelectionPage from './pages/HomeSelectionPage'
-import InterviewPage from './pages/InterviewPage'
+import RecordNavPage from './pages/RecordNavPage'
+import TimelineEditPage from './pages/TimelineEditPage'
 import AIGenerationPage from './pages/AIGenerationPage'
 import CorrectionPageV2 from './pages/CorrectionPageV2'
-import TimelineListPage from './pages/TimelineListPage'
 import PDFDisplayPage from './pages/PDFDisplayPage'
 import Header from './components/Common/Header'
 import { API_URL } from './config'
 import './App.css'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<'user' | 'home' | 'interview' | 'aiGeneration' | 'correction' | 'timelineList' | 'pdfDisplay'>('user')
+  const [currentPage, setCurrentPage] = useState<'user' | 'home' | 'record-nav' | 'timeline-edit' | 'aiGeneration' | 'correction' | 'pdfDisplay'>('user')
   const [userId, setUserId] = useState<number | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [userInfo, setUserInfo] = useState<{ name: string; age: number } | undefined>()
@@ -50,14 +50,14 @@ function App() {
       const hash = window.location.hash.slice(1)
       if (hash === 'home') {
         setCurrentPage('home')
-      } else if (hash === 'interview') {
-        setCurrentPage('interview')
+      } else if (hash === 'record-nav') {
+        setCurrentPage('record-nav')
+      } else if (hash === 'timeline-edit') {
+        setCurrentPage('timeline-edit')
       } else if (hash === 'aiGeneration') {
         setCurrentPage('aiGeneration')
       } else if (hash === 'correction') {
         setCurrentPage('correction')
-      } else if (hash === 'timelineList') {
-        setCurrentPage('timelineList')
       } else if (hash === 'pdfDisplay') {
         setCurrentPage('pdfDisplay')
       } else {
@@ -80,16 +80,16 @@ function App() {
 
   // ✅ HomeSelectionPage: 新規作成
   const handleNewInterview = () => {
-    console.log('[Router] 新規インタビュー開始 → interview')
-    window.location.hash = 'interview'
+    console.log('[Router] 新規インタビュー開始 → record-nav')
+    window.location.hash = 'record-nav'
   }
 
   // ✅ HomeSelectionPage: 続行（既存セッション復元）
   const handleContinueInterview = () => {
-    console.log('[Router] 途中保存から続行 → interview')
-    // localStorage に フラグを設定して、InterviewPage で復元させる
+    console.log('[Router] 途中保存から続行 → record-nav')
+    // localStorage にフラグを設定して、RecordNavPage で復元させる
     localStorage.setItem('resumeSession', 'true')
-    window.location.hash = 'interview'
+    window.location.hash = 'record-nav'
   }
 
   // ✅ HomeSelectionPage: 回答を修正
@@ -121,8 +121,33 @@ function App() {
 
   // ✅ HomeSelectionPage: データ編集
   const handleEditTimeline = () => {
-    console.log('[Router] データ編集 → timelineList')
-    window.location.hash = 'timelineList'
+    console.log('[Router] データ編集 → timeline-edit')
+    window.location.hash = 'timeline-edit'
+  }
+
+  // ✅ TimelineEditPage: インタビュー続行
+  const handleTimelineEditContinueInterview = () => {
+    console.log('[Router] 保存庫からインタビュー続行 → record-nav')
+    localStorage.setItem('resumeSession', 'true')
+    window.location.hash = 'record-nav'
+  }
+
+  // ✅ RecordNavPage から AIGeneration へ
+  const handleAIGenerationStart = (answersWithPhotos: any[]) => {
+    setInterviewAnswersWithPhotos(answersWithPhotos)
+    console.log('[Router] Moving to AI generation:', answersWithPhotos.length, 'answers')
+    window.location.hash = 'aiGeneration'
+  }
+
+  // ✅ RecordNavPage から Correction へ
+  const handleCorrectionStart = (conversation: any[], answersWithPhotos: any[]) => {
+    setInterviewConversation(conversation)
+    setInterviewAnswersWithPhotos(answersWithPhotos)
+    console.log('[Router] Moving to correction page:', {
+      conversationLength: conversation.length,
+      answersCount: answersWithPhotos.length
+    })
+    window.location.hash = 'correction'
   }
 
   return (
@@ -153,30 +178,34 @@ function App() {
           />
         )}
 
-        {/* Page 2: Interview (19 Questions) */}
-        {currentPage === 'interview' && userId && token && (
-          <InterviewPage
+        {/* Page 2.5: Timeline Edit */}
+        {currentPage === 'timeline-edit' && userId && token && userInfo && (
+          <TimelineEditPage
             userId={userId}
             token={token}
             userInfo={userInfo}
-            onCorrectionStart={(conversation, answersWithPhotos) => {
-              setInterviewConversation(conversation)
-              setInterviewAnswersWithPhotos(answersWithPhotos)
-              console.log('[Router] Moving to correction page:', {
-                conversationLength: conversation.length,
-                answersCount: answersWithPhotos.length
-              })
-              window.location.hash = 'correction'
+            onComplete={() => {
+              console.log('[Router] Timeline edit complete → home')
+              window.location.hash = 'home'
             }}
-            onAIGenerationStart={(answersWithPhotos) => {
-              setInterviewAnswersWithPhotos(answersWithPhotos)
-              console.log('[Router] Moving to AI generation:', answersWithPhotos.length, 'answers')
-              window.location.hash = 'aiGeneration'
+            onContinueInterview={handleTimelineEditContinueInterview}
+          />
+        )}
+
+        {/* Page 3: Record Nav (聞き取り + 保存庫の統合) */}
+        {currentPage === 'record-nav' && userId && token && userInfo && (
+          <RecordNavPage
+            userId={userId}
+            token={token}
+            userInfo={userInfo}
+            onComplete={() => {
+              console.log('[Router] Record nav complete → home')
+              window.location.hash = 'home'
             }}
           />
         )}
 
-        {/* Page 3: AI Generation (Timeline + Biography) */}
+        {/* Page 4: AI Generation (Timeline + Biography) */}
         {currentPage === 'aiGeneration' && userId && token && userInfo && (
           <AIGenerationPage
             userId={userId}
@@ -191,7 +220,7 @@ function App() {
           />
         )}
 
-        {/* Page 4: Correction & Editing (Integrated Page) */}
+        {/* Page 5: Correction & Editing (Integrated Page) */}
         {currentPage === 'correction' && userId && token && (
           <CorrectionPageV2
             userId={userId}
@@ -200,19 +229,6 @@ function App() {
             answersWithPhotos={interviewAnswersWithPhotos}
             onComplete={() => {
               console.log('[Router] Correction complete → PDF display')
-              window.location.hash = 'pdfDisplay'
-            }}
-          />
-        )}
-
-        {/* Page 5: Timeline List (Edit/Add/Delete) */}
-        {currentPage === 'timelineList' && userId && token && (
-          <TimelineListPage
-            userId={userId}
-            token={token}
-            userInfo={userInfo || { name: 'N/A', age: 0 }}
-            onComplete={() => {
-              console.log('[Router] Timeline list complete → PDF display')
               window.location.hash = 'pdfDisplay'
             }}
           />

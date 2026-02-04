@@ -1,320 +1,163 @@
-/* ============================================
-   TimelineListPage CSS
-   修正内容：CSSクラスを定義
-   ============================================ */
+/* 📚 保存庫ページのスタイル */
 
 .timeline-list-page {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 20px;
-  background-color: #f8f9fa;
-  min-height: 100vh;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.timeline-list-page h1 {
-  color: #2c3e50;
-  text-align: center;
-  margin-bottom: 30px;
-  font-size: 24px;
-}
-
-/* 情報ボックス */
-.timeline-info {
-  background-color: white;
-  padding: 15px 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.timeline-info p {
-  margin: 0;
-  color: #34495e;
-  font-size: 16px;
-}
-
-/* エラーメッセージ */
-.error-message {
-  background-color: #f8d7da;
-  color: #721c24;
-  padding: 12px 15px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-  border: 1px solid #f5c6cb;
-  font-size: 14px;
-}
-
-/* タイムラインイベント一覧 */
-.timeline-events {
-  margin-bottom: 30px;
-}
-
-.no-events {
-  text-align: center;
-  color: #7f8c8d;
-  padding: 40px 20px;
-  background-color: white;
-  border-radius: 8px;
-  margin: 0;
-  font-size: 16px;
-}
-
-/* タイムラインカード */
-.timeline-event-card {
-  background-color: white;
-  padding: 20px;
-  margin-bottom: 15px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid #3498db;
-}
-
-/* イベントヘッダー */
-.event-header {
-  margin-bottom: 15px;
-}
-
-.event-header h3 {
-  margin: 0;
-  color: #2c3e50;
-  font-size: 16px;
-  font-weight: bold;
-}
-
-/* イベント内容 */
-.event-content {
-  margin: 15px 0;
-  color: #34495e;
-  line-height: 1.6;
-  font-size: 14px;
-}
-
-.event-content p {
-  margin: 0 0 10px 0;
-}
-
-.event-content img {
-  max-width: 100%;
-  height: auto;
-  margin-top: 10px;
-  border-radius: 4px;
-}
-
-/* 編集フォーム */
-.edit-form {
-  padding: 20px;
-  background-color: #f9f9f9;
-  border-radius: 4px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-  margin-bottom: 15px;
-}
-
-.form-group {
   display: flex;
   flex-direction: column;
-  margin-bottom: 15px;
+  gap: 15px;
+  height: 100%;
 }
 
-.form-group label {
-  margin-bottom: 5px;
+.page-loading {
+  padding: 20px;
+  text-align: center;
+  color: #7f8c8d;
+  font-size: 14px;
+}
+
+.error-message {
+  padding: 10px;
+  background-color: #e74c3c;
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+/* ========================================
+   セクション共通
+   ======================================== */
+.timeline-section {
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border-left: 3px solid #3498db;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
   color: #2c3e50;
-  font-weight: bold;
+  margin: 0 0 10px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.no-data {
+  font-size: 12px;
+  color: #95a5a6;
+  margin: 10px 0;
+  text-align: center;
+}
+
+/* ========================================
+   進行中セッション
+   ======================================== */
+.session-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  background-color: white;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.session-label {
+  color: #7f8c8d;
+  font-weight: 500;
+}
+
+.session-value {
+  color: #3498db;
+  font-weight: 700;
   font-size: 13px;
 }
 
-.form-group input,
-.form-group select,
-.form-group textarea {
-  padding: 10px;
-  border: 1px solid #bdc3c7;
-  border-radius: 4px;
-  font-size: 14px;
-  font-family: inherit;
-}
-
-.form-group textarea {
-  resize: vertical;
-  min-height: 100px;
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #3498db;
-  box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
-}
-
-/* ボタングループ */
-.button-group {
+/* ========================================
+   完成した人生記録（ミニ表示）
+   ======================================== */
+.timeline-events-mini {
   display: flex;
-  gap: 10px;
-  margin-top: 15px;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
-.button-group button {
-  flex: 1;
-  padding: 10px;
-  border: none;
+.timeline-event-mini {
+  padding: 8px;
+  background-color: white;
   border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-weight: bold;
+  border-left: 3px solid #2ecc71;
 }
 
-/* 編集ボタン */
-.btn-edit {
-  background-color: #3498db;
-  color: white;
-}
-
-.btn-edit:hover {
-  background-color: #2980b9;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
-}
-
-/* 削除ボタン */
-.btn-delete {
-  background-color: #e74c3c;
-  color: white;
-}
-
-.btn-delete:hover {
-  background-color: #c0392b;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(231, 76, 60, 0.3);
-}
-
-/* 保存ボタン */
-.btn-save {
-  background-color: #27ae60;
-  color: white;
-}
-
-.btn-save:hover {
-  background-color: #229954;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3);
-}
-
-/* キャンセルボタン */
-.btn-cancel {
-  background-color: #95a5a6;
-  color: white;
-}
-
-.btn-cancel:hover {
-  background-color: #7f8c8d;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(149, 165, 166, 0.3);
-}
-
-/* アクションボタン */
-.action-buttons {
-  margin-bottom: 20px;
-}
-
-.btn-add-event {
-  width: 100%;
-  padding: 12px;
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  font-weight: bold;
-}
-
-.btn-add-event:hover {
-  background-color: #2980b9;
-}
-
-/* ナビゲーションボタン */
-.navigation-buttons {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-
-.btn-next {
-  padding: 12px 24px;
-  background-color: #e74c3c;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  font-weight: bold;
-  min-width: 200px;
-}
-
-.btn-next:hover {
-  background-color: #c0392b;
-}
-
-/* ローディング状態 */
-.page-loading {
-  text-align: center;
-  padding: 40px;
+.event-title-mini {
+  font-size: 11px;
   color: #7f8c8d;
-  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 3px;
 }
 
-/* レスポンシブデザイン */
-@media (max-width: 768px) {
+.event-desc-mini {
+  font-size: 12px;
+  color: #2c3e50;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========================================
+   レスポンシブ：タブレット・スマートフォン
+   ======================================== */
+@media (max-width: 1024px) {
   .timeline-list-page {
+    gap: 10px;
+  }
+
+  .timeline-section {
     padding: 10px;
   }
 
-  .timeline-list-page h1 {
-    font-size: 20px;
-    margin-bottom: 20px;
+  .section-title {
+    font-size: 13px;
+    margin-bottom: 8px;
   }
 
-  .form-row {
-    grid-template-columns: 1fr;
+  .session-item {
+    padding: 6px;
+    font-size: 11px;
   }
 
-  .button-group {
-    flex-direction: column;
+  .timeline-event-mini {
+    padding: 6px;
   }
 
-  .button-group button {
-    width: 100%;
+  .event-title-mini {
+    font-size: 10px;
   }
 
-  .timeline-event-card {
-    padding: 15px;
-  }
-
-  .navigation-buttons {
-    flex-direction: column;
-  }
-
-  .btn-next {
-    width: 100%;
-    min-width: unset;
+  .event-desc-mini {
+    font-size: 11px;
   }
 }
 
-/* 高齢者向けの大きなフォント */
-@media (prefers-reduced-motion: no-preference) {
-  .button-group button,
-  .btn-add-event,
-  .btn-next {
-    min-height: 44px;
-    font-size: 15px;
+@media (max-width: 768px) {
+  .timeline-list-page {
+    gap: 8px;
+  }
+
+  .timeline-section {
+    padding: 8px;
+  }
+
+  .section-title {
+    font-size: 12px;
   }
 }

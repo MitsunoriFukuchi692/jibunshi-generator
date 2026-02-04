@@ -225,8 +225,10 @@ export default function InterviewPage({
               });
 
               // サーバーから復元したデータを使用
-              const normalizedAnswers = (serverSession.answersWithPhotos || []).map((answer: any) => ({
-                text: answer.text || '',
+              const normalizedAnswers = (serverSession.answersWithPhotos || []).map((answer: any, idx: number) => ({
+                question: answer.question || INTERVIEW_QUESTIONS[idx] || '質問',
+                answer: answer.answer || answer.text || '',
+                text: answer.text || answer.answer || '',
                 photos: Array.isArray(answer.photos) ? answer.photos : [],
                 year: answer.year || '',
                 month: answer.month || '',
@@ -270,8 +272,10 @@ export default function InterviewPage({
           // セッションが24時間以内であれば復元
           if (Date.now() - session.timestamp < 24 * 60 * 60 * 1000) {
             // ✅ データを正規化（undefined を適切な値に置換）
-            const normalizedAnswers = (session.answersWithPhotos || []).map((answer: any) => ({
-              text: answer.text || '',
+            const normalizedAnswers = (session.answersWithPhotos || []).map((answer: any, idx: number) => ({
+              question: answer.question || INTERVIEW_QUESTIONS[idx] || '質問',
+              answer: answer.answer || answer.text || '',
+              text: answer.text || answer.answer || '',
               photos: Array.isArray(answer.photos) ? answer.photos : [],  // ✅ undefined → []
               year: answer.year || '',
               month: answer.month || '',
@@ -534,11 +538,13 @@ export default function InterviewPage({
 
       // ✅ 重要な出来事の場合だけ年月を記録、そうでなければ記録しない
       const newAnswer: AnswerWithPhotos = {
+        question: INTERVIEW_QUESTIONS[currentQuestionIndex],  // ✅ 質問文を追加
+        answer: currentAnswer,                                 // ✅ answer に統一
         text: currentAnswer,
         photos: currentPhotos,
         year: eventYear || 'なし',
         month: eventMonth || null,
-        eventAge: eventAge ? parseInt(eventAge) : undefined,  // ✅ この行を追加
+        eventAge: eventAge ? parseInt(eventAge) : undefined,
         eventTitle: eventTitle || undefined,
         isImportant: isImportantEvent
       };
@@ -583,7 +589,7 @@ export default function InterviewPage({
             // ② 🔥 重要：サーバーにも保存（データ永続化）
             try {
               const apiUrl = API_URL;
-              const serverResponse = await fetch(`${apiUrl}/api/interview-session/save`, {
+              const serverResponse = await fetch(`${apiUrl}/api/interview/save`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -773,7 +779,7 @@ export default function InterviewPage({
         conversationLength: conversation.length
       });
 
-      const response = await fetch(`${apiUrl}/api/interview-session/save`, {
+      const response = await fetch(`${apiUrl}/api/interview/save`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

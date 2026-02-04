@@ -13,37 +13,63 @@ interface TimelineEvent {
   photoUrl?: string
 }
 
+interface InterviewSession {
+  currentQuestionIndex: number
+  conversation: any[]
+  answersWithPhotos: any[]
+  timestamp: number
+}
+
 interface TimelineListPageProps {
   userId: number
   token: string
   userInfo: { name: string; age: number }
   onComplete: () => void
+  onBackToHome?: () => void  // ✅ 修正：ホーム画面に戻るコールバック
+  onContinueInterview?: () => void  // ✅ 修正：インタビュー続行時のコールバック
 }
 
 export default function TimelineListPage({
   userId,
   token,
   userInfo,
-  onComplete
+  onComplete,
+  onBackToHome,
+  onContinueInterview
 }: TimelineListPageProps) {
   const [events, setEvents] = useState<TimelineEvent[]>([])
+  const [session, setSession] = useState<InterviewSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [formData, setFormData] = useState<Partial<TimelineEvent>>({})
 
-  // 年表データを取得
+  // セッション + 年表データを取得
   useEffect(() => {
-    const fetchTimeline = async () => {
+    const fetchData = async () => {
       try {
-        // ✅ 修正：apiBaseUrl の代わりに import.meta.env.VITE_API_BASE_URL を使用
-        // ✅ 修正：'/api/timeline/user/2' から '/api/timeline/user/${userId}' に変更
+        // ✅ 進行中のセッションを取得
+        try {
+          const sessionResponse = await fetch(`${apiBaseUrl}/api/interview-session/load`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          
+          if (sessionResponse.ok) {
+            const sessionData = await sessionResponse.json()
+            console.log('✅ Session loaded:', {
+              questionIndex: sessionData.currentQuestionIndex,
+              answersCount: sessionData.answersWithPhotos?.length || 0
+            })
+            setSession(sessionData)
+          }
+        } catch (sessionErr) {
+          console.log('ℹ️ No active session')
+        }
+
+        // ✅ 完成した年表データを取得
+        const timelineUrl = `${apiBaseUrl}/api/timeline/user/${userId}`
         
-        const url = `${apiBaseUrl}/api/timeline/user/${userId}`
+        console.log('📊 Fetching timeline from:', timelineUrl)
         
-        console.log('📊 Fetching timeline from:', url)
-        
-        const response = await fetch(url, {
+        const response = await fetch(timelineUrl, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         
@@ -54,7 +80,7 @@ export default function TimelineListPage({
         
         const data = await response.json()
         console.log('✅ Timeline data received:', data)
-        setEvents(data || [])
+        setEvents(data.events || [])
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : '年表の読み込みに失敗しました'
         setError(errorMessage)
@@ -65,246 +91,141 @@ export default function TimelineListPage({
     }
 
     if (userId && token) {
-      fetchTimeline()
+      fetchData()
     }
   }, [userId, token])
 
-  // 編集開始
-  const handleEdit = (event: TimelineEvent) => {
-    setEditingId(event.id)
-    setFormData({
-      ...event,
-      age: event.age || undefined
-    })
-  }
-
-  // 編集キャンセル
-  const handleCancel = () => {
-    setEditingId(null)
-    setFormData({})
-  }
-
-  // 編集保存
-  const handleSave = async () => {
-    if (!editingId) {
-      setError('編集IDが見つかりません')
-      return
-    }
-
-    if (!formData.age && !formData.year) {
-      setError('年か年齢のいずれかが必須です')
-      return
-    }
-
-    if (!formData.month) {
-      setError('月は必須です')
-      return
-    }
-
-    try {
-      const payload = {
-        ...formData,
-        event_age: formData.age,
-        month: formData.month,
-        eventTitle: formData.eventTitle,
-        event_description: formData.description,
-        event_title: formData.eventTitle
-      }
-
-      const response = await fetch(
-  `${apiBaseUrl}/api/timeline/${editingId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        }
-      )
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Update failed')
-      }
-
-      const updatedData = await response.json()
-      setEvents(events.map(e =>
-        e.id === editingId 
-          ? { 
-              ...e, 
-              ...updatedData.data,
-              age: formData.age
-            } as TimelineEvent 
-          : e
-      ))
-      setEditingId(null)
-      setFormData({})
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存に失敗しました')
-      console.error(err)
-    }
-  }
-
-  // 削除
-  const handleDelete = async (id: number) => {
-    if (!confirm('このイベントを削除しますか？')) return
-
-    try {
-      const response = await fetch(
-  `${apiBaseUrl}/api/timeline/${editingId}`,
-        {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        }
-      )
-
-      if (!response.ok) throw new Error('Delete failed')
-      setEvents(events.filter(e => e.id !== id))
-    } catch (err) {
-      setError('削除に失敗しました')
-      console.error(err)
-    }
-  }
-
   if (loading) {
-    return <div className="page-loading">年表を読み込み中...</div>
+    return <div className="page-loading">データを読み込み中...</div>
   }
 
   return (
     <div className="timeline-list-page">
-      <h1>📅 人生年表の確認・編集</h1>
-
-      <div className="timeline-info">
-        <p>{userInfo.name}さんの人生記録（全{events.length}件）</p>
+      {/* ✅ 修正：ホーム画面に戻るボタン */}
+      <div style={styles.headerBar}>
+        <button 
+          onClick={onBackToHome}
+          style={styles.backButton}
+          title="ホーム画面に戻る"
+        >
+          ← 戻る
+        </button>
+        <h2 style={styles.pageTitle}>保存庫</h2>
+        <div style={{ width: '80px' }}></div>  {/* 右側スペーサー */}
       </div>
 
       {error && <div className="error-message">{error}</div>}
 
-      <div className="timeline-events">
-        {events.length === 0 ? (
-          <p className="no-events">年表データがありません</p>
-        ) : (
-          events.map((event) => (
-            <div key={event.id} className="timeline-event-card">
-              {editingId === event.id ? (
-                <div className="edit-form">
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>年齢（何歳時の出来事？）</label>
-                      <input
-                        type="number"
-                        placeholder="例：25、30"
-                        min="0"
-                        max="150"
-                        value={formData.age || ''}
-                        onChange={(e) =>
-                          setFormData({ ...formData, age: parseInt(e.target.value) || undefined })
-                        }
-                      />
-                      <small style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '5px' }}>
-                        年齢を入力するとバックエンドで自動計算されます
-                      </small>
-                    </div>
-                    <div className="form-group">
-                      <label>月</label>
-                      <select
-                        value={formData.month || ''}
-                        onChange={(e) =>
-                          setFormData({ ...formData, month: parseInt(e.target.value) || null })
-                        }
-                      >
-                        <option value="">選択してください</option>
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
-                          <option key={m} value={m}>{m}月</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label>イベント名</label>
-                    <input
-                      type="text"
-                      placeholder="例：結婚、転職、出生など"
-                      value={formData.eventTitle || ''}
-                      onChange={(e) =>
-                        setFormData({ ...formData, eventTitle: e.target.value })
-                      }
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>説明</label>
-                    <textarea
-                      placeholder="このイベントについて説明してください"
-                      value={formData.description || ''}
-                      onChange={(e) =>
-                        setFormData({ ...formData, description: e.target.value })
-                      }
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="button-group">
-                    <button className="btn-save" onClick={handleSave}>保存</button>
-                    <button className="btn-cancel" onClick={handleCancel}>キャンセル</button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="event-header">
-                    <h3>
-                      {event.year}年
-                      {event.month}月 - {event.eventTitle}
-                    </h3>
-                  </div>
-                  <div className="event-content">
-                    <p>{event.description}</p>
-                    {event.photoUrl && (
-                      <img src={event.photoUrl} alt={event.eventTitle} />
-                    )}
-                  </div>
-                  <div className="button-group">
-                    <button
-                      className="btn-edit"
-                      onClick={() => handleEdit(event)}
-                    >
-                      編集
-                    </button>
-                    <button
-                      className="btn-delete"
-                      onClick={() => handleDelete(event.id)}
-                    >
-                      削除
-                    </button>
-                  </div>
-                </>
-              )}
+      {/* ========================================
+          セクション1：進行中のセッション
+          ======================================== */}
+      <div className="timeline-section">
+        <h3 className="section-title">📄 進行中</h3>
+        {session && session.currentQuestionIndex > 0 ? (
+          <div className="session-preview">
+            <div className="session-item">
+              <span className="session-label">進捗</span>
+              <span className="session-value">{session.currentQuestionIndex} / 19</span>
             </div>
-          ))
+            <div className="session-item">
+              <span className="session-label">回答</span>
+              <span className="session-value">{session.answersWithPhotos?.length || 0}</span>
+            </div>
+            {/* ✅ 修正：インタビュー続行ボタン */}
+            <button
+              onClick={onContinueInterview}
+              style={{
+                ...styles.button,
+                ...styles.continueButton,
+                marginTop: '15px',
+                width: '100%'
+              }}
+            >
+              🔄 インタビューを続行する
+            </button>
+          </div>
+        ) : (
+          <p className="no-data">進行中のセッションはありません</p>
         )}
       </div>
 
-      <div className="action-buttons">
-        <button
-          className="btn-add-event"
-          onClick={() => {
-            alert('新規イベント追加機能は別ページで実装予定です');
-          }}
-        >
-          + 新しいイベントを追加
-        </button>
-      </div>
-
-      <div className="navigation-buttons">
-        <button
-          className="btn-next"
-          onClick={onComplete}
-        >
-          PDFを作成 →
-        </button>
+      {/* ========================================
+          セクション2：完成した人生記録
+          ======================================== */}
+      <div className="timeline-section">
+        <h3 className="section-title">✅ 完成</h3>
+        <div className="timeline-events-mini">
+          {events.length === 0 ? (
+            <p className="no-data">完成した記録がありません</p>
+          ) : (
+            events.map((event) => (
+              <div key={event.id} className="timeline-event-mini">
+                <div className="event-title-mini">
+                  {event.year}年{event.month}月
+                </div>
+                <div className="event-desc-mini">
+                  {event.eventTitle}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   )
+}
+
+// ✅ 修正：戻るボタンと続行ボタン用スタイル
+const styles = {
+  headerBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '15px 20px',
+    backgroundColor: '#ffffff',
+    borderBottom: '1px solid #e0e0e0',
+    marginBottom: '20px',
+    position: 'sticky' as const,
+    top: 0,
+    zIndex: 100,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+  },
+
+  backButton: {
+    padding: '10px 15px',
+    backgroundColor: '#3498db',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    transition: 'background-color 0.3s ease',
+    width: '80px'
+  } as React.CSSProperties,
+
+  pageTitle: {
+    margin: 0,
+    fontSize: '20px',
+    color: '#2c3e50',
+    fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'center' as const
+  } as React.CSSProperties,
+
+  button: {
+    padding: '12px 20px',
+    borderRadius: '4px',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    transition: 'all 0.3s ease',
+    textAlign: 'center' as const
+  } as React.CSSProperties,
+
+  continueButton: {
+    backgroundColor: '#27ae60',
+    color: 'white'
+  } as React.CSSProperties
 }
