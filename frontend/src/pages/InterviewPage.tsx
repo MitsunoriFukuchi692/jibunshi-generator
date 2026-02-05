@@ -659,8 +659,10 @@ export default function InterviewPage({
             },
             body: JSON.stringify({
               userId,
-              age: userInfo?.age,
-              answersWithPhotos: newAnswersWithPhotos
+              currentQuestionIndex: newAnswersWithPhotos.length,  // ✅ 修正：19問完了時は 19 を送信
+              conversation: newConversation,  // ✅ 修正：conversation も送信
+              answersWithPhotos: newAnswersWithPhotos,
+              timestamp: Date.now()  // ✅ 修正：タイムスタンプも送信
             })
           });
 
