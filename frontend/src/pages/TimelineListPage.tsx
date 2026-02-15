@@ -48,26 +48,20 @@ export default function TimelineListPage({
       try {
         // ✅ 進行中のセッションを取得
         try {
-          const sessionResponse = await fetch(`${apiBaseUrl}/api/interview-session/load`, {
+          const sessionResponse = await fetch(`${apiBaseUrl}/api/interview/load`, {
             headers: { 'Authorization': `Bearer ${token}` }
           })
           
           if (sessionResponse.ok) {
             const sessionData = await sessionResponse.json()
-            console.log('✅ Session loaded:', {
-              questionIndex: sessionData.currentQuestionIndex,
-              answersCount: sessionData.answersWithPhotos?.length || 0
-            })
             setSession(sessionData)
           }
         } catch (sessionErr) {
-          console.log('ℹ️ No active session')
         }
 
         // ✅ 完成した年表データを取得
         const timelineUrl = `${apiBaseUrl}/api/timeline/user/${userId}`
         
-        console.log('📊 Fetching timeline from:', timelineUrl)
         
         const response = await fetch(timelineUrl, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -79,12 +73,10 @@ export default function TimelineListPage({
         }
         
         const data = await response.json()
-        console.log('✅ Timeline data received:', data)
-        setEvents(data.events || [])
+        setEvents(data || [])
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : '年表の読み込みに失敗しました'
         setError(errorMessage)
-        console.error('❌ Timeline fetch error:', err)
       } finally {
         setLoading(false)
       }
@@ -102,6 +94,7 @@ export default function TimelineListPage({
   return (
     <div className="timeline-list-page">
       {/* ✅ 修正：ホーム画面に戻るボタン */}
+
       <div style={styles.headerBar}>
         <button 
           onClick={onBackToHome}
